@@ -91,48 +91,56 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
     add_silent_audio_if_needed(video_path)
         
     # Align video and audio
-    pipline_align(video_file, output_dir)
+    pipline_align(video_path, output_dir)
     
     # Cut video and audio into segments
     video_name = os.path.basename(video_path).split('.')[0]
-    aligned_audio_path = os.path.join(preproc_dir, 'audio_ori', f"{video_name}.wav")
+    aligned_audio_path = os.path.join(output_dir, 'audio_ori', f"{video_name}.wav")
     
     # Get audio duration
     _audio_align, _sr_align = librosa.load(aligned_audio_path, sr=None)
     audio_duration = librosa.get_duration(y=_audio_align, sr=_sr_align)
     num_segments = int(np.floor(audio_duration / config.data.audio_samples))
     
-    segment_id = [f"{video_name}_{onset_idx}_" for onset_idx in range(num_segments)]
+    segment_ids = [f"{video_name}_{onset_idx}_" for onset_idx in range(num_segments)]
     
     # make dummy annotation file
     with open(os.path.join(preproc_dir, f"{video_name}_times.txt"), "w") as f:
         for i in range(num_segments): f.write(f"{i * 10} \n")
     
     # Cut video & resample audio
-    pipline_cut(segment_id, metadata_dir=preproc_dir, preproc_dir=preproc_dir, 
+    with Pool(2) as p:
+        for _ in tqdm(p.imap_unordered(partial(pipline_cut, metadata_dir=preproc_dir, preproc_dir=preproc_dir, 
                                             output_dir=feature_dir, sr=config.data.audio_sample_rate, 
-                                            fps=config.data.video_fps, duration_target=config.data.audio_samples)
+                                            fps=config.data.video_fps, duration_target=config.data.audio_samples), 
+                                        segment_ids),
+                    total=len(segment_ids)):
+            pass
     
-    segment_id = segment_id[:-1] # eliminate last character ('_')
+    segment_ids = [segment_id[:-1] for segment_id in segment_ids] # eliminate last character ('_')
     
     # Extract optical flow
-    video_segment_path = os.path.join(feature_dir, f"videos_{config.data.audio_samples}s_{config.data.video_fps}fps", 
-                                        f"{segment_id}.mp4")
-    of_dir = os.path.join(feature_dir, f'OF_{config.data.audio_samples}s_{config.data.video_fps}fps')
-    os.makedirs(of_dir, exist_ok=True)
+    processed_video_paths = []
+    for segment_id in segment_ids:
+        video_segment_path = os.path.join(feature_dir, f"videos_{config.data.audio_samples}s_{config.data.video_fps}fps", 
+                                          f"{segment_id}.mp4")
+        of_dir = os.path.join(feature_dir, f'OF_{config.data.audio_samples}s_{config.data.video_fps}fps')
+        os.makedirs(of_dir, exist_ok=True)
+        
+        cal_for_frames(
+            video_path=video_segment_path,
+            output_dir=of_dir,
+            n_frames=int(config.data.video_fps * config.data.audio_samples),
+            width=config.data.video_width,
+            height=config.data.video_height,
+            batch_size=batch_size,
+            device_id=device_id
+        )
+        
+        processed_video_paths.append(video_segment_path)
     
-    cal_for_frames(
-        video_path=video_segment_path,
-        output_dir=of_dir,
-        n_frames=int(config.data.video_fps * config.data.audio_samples),
-        width=config.data.video_width,
-        height=config.data.video_height,
-        batch_size=batch_size,
-        device_id=device_id
-    )
-
     with open(os.path.join(feature_dir, 'temp_file_list.txt'), 'w') as f:
-        f.write(f"{segment_id}\n")
+        for segment_id in segment_ids: f.write(f"{segment_id}\n")
             
     # Extract RGB / Optical Flow features
     for modality in ['RGB', 'Flow']:
@@ -141,11 +149,11 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
             output_dir=os.path.join(feature_dir, f"feature_{modality}"),
             modality=modality,
             test_list=os.path.join(feature_dir, 'temp_file_list.txt'),
-            device=device,
-            workers=1
+            workers=num_worker,
+            device_id=device_id
         )
                 
-    return video_segment_path
+    return processed_video_paths
 
 
 @torch.no_grad()

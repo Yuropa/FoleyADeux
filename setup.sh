@@ -37,6 +37,13 @@ pip install h5py
 pip install torchlibrosa
 pip install transformers
 pip install ftfy
+pip install braceexpand
+pip install pandas
+pip install webdataset
+pip install wget
+pip install torchaudio
+pip install timm
+pip install matplotlib
 
 git submodule init
 git submodule update
@@ -50,4 +57,31 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 #pip install -e ./external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm
 #pip install -e ./external/video-foley/RMS_ControlNet_Inference/TorchJAEKWON
 
+echo "Preparing audio dataset..."
+
+DATA_DIR="./data"
+TARGET_DIR="$DATA_DIR/GreatestHits"
+ZIP_FILE="$DATA_DIR/vis-data.zip"
+URL="https://web.eecs.umich.edu/~ahowens/vis/vis-data.zip"
+
+# If dataset already exists, skip download & extraction
+if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
+    echo "Dataset already exists at $TARGET_DIR, skipping download and extraction."
+else
+    # Make sure data directory exists
+    mkdir -p "$TARGET_DIR"
+
+    echo "Downloading audio dataset (~50GB)..."
+    curl -L -C - "$URL" -o "$ZIP_FILE" || { echo "Download failed, skipping."; }
+
+    echo "Extracting dataset..."
+    unzip -q "$ZIP_FILE" -d "$TARGET_DIR" || { echo "Extraction failed, skipping."; }
+
+    echo "Cleaning up zip file..."
+    rm -f "$ZIP_FILE"
+
+    echo "Dataset ready at $TARGET_DIR"
+fi
+
+echo "Downloading models..."
 git clone https://huggingface.co/jnwnlee/video-foley ./ckpt
