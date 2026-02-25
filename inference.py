@@ -89,13 +89,25 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
 
     print("Preprocess videos...")
     add_silent_audio_if_needed(video_path)
-        
-    # Align video and audio
-    pipline_align(video_path, output_dir)
     
     # Cut video and audio into segments
-    video_name = os.path.basename(video_path).split('.')[0]
-    aligned_audio_path = os.path.join(output_dir, 'audio_ori', f"{video_name}.wav")
+    pipline_align(video_path, output_dir)
+
+    core_id = os.path.basename(video_path).split('_')[0]
+    
+    # Use that ID to find the actual wav file created
+    audio_search = glob(os.path.join(output_dir, 'audio_ori', f"{core_id}*.wav"))
+    if not audio_search: raise FileNotFoundError(f"No wav found for {core_id}")
+    
+    aligned_audio_path = audio_search[0]
+    video_name = (f"{os.path.basename(aligned_audio_path).replace('.wav', '')}")
+
+    if not os.path.exists(aligned_audio_path):
+        # Fallback: list files to see what actually exists if it's still missing
+        available = os.listdir(os.path.join(output_dir, 'audio_ori'))
+        print(f"Expected {aligned_audio_path} not found. Available files: {available}")
+        # You could also use glob to be name-agnostic:
+        # aligned_audio_path = glob(os.path.join(output_dir, 'audio_ori', f"{video_name}*.wav"))[0]
     
     # Get audio duration
     _audio_align, _sr_align = librosa.load(aligned_audio_path, sr=None)
@@ -108,10 +120,12 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
     with open(os.path.join(preproc_dir, f"{video_name}_times.txt"), "w") as f:
         for i in range(num_segments): f.write(f"{i * 10} \n")
     
+    print(segment_ids)
+
     # Cut video & resample audio
     with Pool(2) as p:
         for _ in tqdm(p.imap_unordered(partial(pipline_cut, metadata_dir=preproc_dir, preproc_dir=preproc_dir, 
-                                            output_dir=feature_dir, sr=config.data.audio_sample_rate, 
+                                            output_dir=output_dir, sr=config.data.audio_sample_rate, 
                                             fps=config.data.video_fps, duration_target=config.data.audio_samples), 
                                         segment_ids),
                     total=len(segment_ids)):
@@ -134,7 +148,7 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
             width=config.data.video_width,
             height=config.data.video_height,
             batch_size=batch_size,
-            device_id=device_id
+            device=device
         )
         
         processed_video_paths.append(video_segment_path)
@@ -179,10 +193,10 @@ def generate_audio(processed_video_path: str, prompts: str, prompt_type: str, ep
 
         # Prepare batch features
         batch_features = []
-        for processed_video_path in batch_video_paths:
-            feature_dir = '/'.join(os.path.dirname(processed_video_path).split('/')[:-1])
-            rgb_feature = np.load(os.path.join(feature_dir, f"feature_RGB", f"{os.path.basename(processed_video_path).split('.')[0]}.pkl"), allow_pickle=True)
-            flow_feature = np.load(os.path.join(feature_dir, f"feature_Flow", f"{os.path.basename(processed_video_path).split('.')[0]}.pkl"), allow_pickle=True)
+        for v_path in batch_video_paths:
+            v_id = os.path.basename(v_path).split('.')[0]
+            rgb_feature = np.load(os.path.join(feature_dir, "feature_RGB", f"{v_id}.pkl"), allow_pickle=True)
+            flow_feature = np.load(os.path.join(feature_dir, "feature_Flow", f"{v_id}.pkl"), allow_pickle=True)
             
             rgb_feature = pad_or_truncate_feature(rgb_feature, config.data.video_samples)
             flow_feature = pad_or_truncate_feature(flow_feature, config.data.video_samples)
