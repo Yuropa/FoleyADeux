@@ -1,0 +1,10 @@
+
+python-dateutil>=2.8.2
+requests>=2.31.0
+pandas>=2.0.3
+librosa>=0.10.1
+soundfile>=0.12.1
+torch>=2.1.0
+torchaudio>=2.1.0
+transformers>=4.50.0
+typing-extensions>=4.7.1
