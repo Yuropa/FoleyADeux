@@ -44,6 +44,7 @@ pip install wget
 pip install torchaudio
 pip install timm
 pip install matplotlib
+pip install av
 
 git submodule init
 git submodule update
@@ -60,7 +61,8 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 echo "Preparing audio dataset..."
 
 DATA_DIR="./data"
-TARGET_DIR="$DATA_DIR/GreatestHits"
+TARGET_DIR_PARENT="./mnt"
+TARGET_DIR="$TARGET_DIR_PARENT/GreatestHits"
 ZIP_FILE="$DATA_DIR/vis-data.zip"
 URL="https://web.eecs.umich.edu/~ahowens/vis/vis-data.zip"
 
@@ -70,12 +72,16 @@ if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
 else
     # Make sure data directory exists
     mkdir -p "$TARGET_DIR"
+    mkdir -p "$DATA_DIR"
 
     echo "Downloading audio dataset (~50GB)..."
     curl -L -C - "$URL" -o "$ZIP_FILE" || { echo "Download failed, skipping."; }
 
     echo "Extracting dataset..."
     unzip -q "$ZIP_FILE" -d "$TARGET_DIR" || { echo "Extraction failed, skipping."; }
+
+    mv "$TARGET_DIR_PARENT/vis-data/"* "$TARGET_DIR"/
+    rm -rf "$TARGET_DIR_PARENT/vis-data"
 
     echo "Cleaning up zip file..."
     rm -f "$ZIP_FILE"

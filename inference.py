@@ -27,7 +27,7 @@ from preprocess.extract_audio_and_video import pipline_align, pipline_cut
 from preprocess.extract_rgb_flow_raft import cal_for_frames
 from preprocess.extract_feature import extract_bn_inception_feature
 
-def add_silent_audio_if_needed(video_path: str) -> None:
+def add_silent_audio_if_needed(video_path:str) -> None:
     # Get video information using ffprobe
     cmd = [
         'ffprobe',
@@ -75,57 +75,66 @@ def add_silent_audio_if_needed(video_path: str) -> None:
     os.replace(temp_output, video_path)
     print(f"Silent audio track added to {video_path}")
 
+
 @torch.no_grad()
-def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torch.device) -> str:    
-    if not os.path.exists(video_path):
-        print(f"Video file not found: {video_path}")
-        return ""
+def preprocess_videos(video_dir: str, config: CN, output_dir: str, device: torch.device, num_worker: int = 2, batch_size: int = 1) -> List[str]:
+    assert glob(os.path.join(video_dir, '*.mp4')) + glob(os.path.join(video_dir, '*.avi')) != [], "No video files found in video_dir (must be .mp4 or .avi)"
+    
+    processed_video_paths = []
     
     preproc_dir = os.path.join(output_dir, 'preprocess')
     os.makedirs(preproc_dir, exist_ok=True)
     
     feature_dir = os.path.join(output_dir, 'features')
     os.makedirs(feature_dir, exist_ok=True)
+    
+    # Inspect video files in video_dir
+    video_paths = glob(os.path.join(video_dir, '*.mp4')) + glob(os.path.join(video_dir, '*.avi'))
+    video_paths = sorted(video_paths)
+    
+    for video_path in video_paths:
+        if not os.path.exists(video_path):
+            print(f"Video file not found: {video_path}")
+            continue
+    
+    print("Preprocess: cut videos...")
 
-    print("Preprocess videos...")
-    add_silent_audio_if_needed(video_path)
+    # Add silent audio if video has no audio
+    for video_path in video_paths:
+        add_silent_audio_if_needed(video_path)
+        
+    # Align video and audio
+    with Pool(num_worker) as p:
+        for _ in tqdm(p.imap_unordered(partial(pipline_align, output_dir=preproc_dir), 
+                                       video_paths), total=len(video_paths)):
+            pass
+            
+    segment_ids = []
     
-    # Cut video and audio into segments
-    pipline_align(video_path, output_dir)
+    for video_path in video_paths:
+        # Cut video and audio into segments
+        video_name = os.path.basename(video_path).split('.')[0]
+        aligned_audio_path = os.path.join(preproc_dir, 'audio_ori', f"{video_name}.wav")
 
-    core_id = os.path.basename(video_path).split('_')[0]
+        print(f"{video_name}")
+        print(f"{aligned_audio_path}")
+        
+        # Get audio duration
+        _audio_align, _sr_align = librosa.load(aligned_audio_path, sr=None)
+        audio_duration = librosa.get_duration(y=_audio_align, sr=_sr_align)
+        num_segments = int(np.floor(audio_duration / config.data.audio_samples))
+        
+        segment_ids.extend([f"{video_name}_{onset_idx}_" for onset_idx in range(num_segments)])
+        
+        # make dummy annotation file
+        base_annotation_name = video_name.rsplit('_', 1)[0]
+        with open(os.path.join(preproc_dir, f"{base_annotation_name}_times.txt"), "w") as f:
+            for i in range(num_segments): f.write(f"{i * 10} \n")
     
-    # Use that ID to find the actual wav file created
-    audio_search = glob(os.path.join(output_dir, 'audio_ori', f"{core_id}*.wav"))
-    if not audio_search: raise FileNotFoundError(f"No wav found for {core_id}")
-    
-    aligned_audio_path = audio_search[0]
-    video_name = (f"{os.path.basename(aligned_audio_path).replace('.wav', '')}")
-
-    if not os.path.exists(aligned_audio_path):
-        # Fallback: list files to see what actually exists if it's still missing
-        available = os.listdir(os.path.join(output_dir, 'audio_ori'))
-        print(f"Expected {aligned_audio_path} not found. Available files: {available}")
-        # You could also use glob to be name-agnostic:
-        # aligned_audio_path = glob(os.path.join(output_dir, 'audio_ori', f"{video_name}*.wav"))[0]
-    
-    # Get audio duration
-    _audio_align, _sr_align = librosa.load(aligned_audio_path, sr=None)
-    audio_duration = librosa.get_duration(y=_audio_align, sr=_sr_align)
-    num_segments = int(np.floor(audio_duration / config.data.audio_samples))
-    
-    segment_ids = [f"{video_name}_{onset_idx}_" for onset_idx in range(num_segments)]
-    
-    # make dummy annotation file
-    with open(os.path.join(preproc_dir, f"{video_name}_times.txt"), "w") as f:
-        for i in range(num_segments): f.write(f"{i * 10} \n")
-    
-    print(segment_ids)
-
     # Cut video & resample audio
-    with Pool(2) as p:
+    with Pool(num_worker) as p:
         for _ in tqdm(p.imap_unordered(partial(pipline_cut, metadata_dir=preproc_dir, preproc_dir=preproc_dir, 
-                                            output_dir=output_dir, sr=config.data.audio_sample_rate, 
+                                            output_dir=feature_dir, sr=config.data.audio_sample_rate, 
                                             fps=config.data.video_fps, duration_target=config.data.audio_samples), 
                                         segment_ids),
                     total=len(segment_ids)):
@@ -134,7 +143,6 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
     segment_ids = [segment_id[:-1] for segment_id in segment_ids] # eliminate last character ('_')
     
     # Extract optical flow
-    processed_video_paths = []
     for segment_id in segment_ids:
         video_segment_path = os.path.join(feature_dir, f"videos_{config.data.audio_samples}s_{config.data.video_fps}fps", 
                                           f"{segment_id}.mp4")
@@ -164,15 +172,15 @@ def preprocess_videos(video_path: str, config: CN, output_dir: str, device: torc
             modality=modality,
             test_list=os.path.join(feature_dir, 'temp_file_list.txt'),
             workers=num_worker,
-            device_id=device_id
+            device=device
         )
                 
     return processed_video_paths
 
 
 @torch.no_grad()
-def generate_audio(processed_video_path: str, prompts: str, prompt_type: str, epoch: int, 
-                   ckpt_dir: str, config: CN, output_dir: str, 
+def generate_audio(processed_video_paths: List[str], prompts: List[str], epoch: int, 
+                   video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, config: CN, output_dir: str, 
                    device: torch.device, batch_size: int = 1) -> None:
     print(f"Inference with epoch {epoch}...")
     
@@ -183,20 +191,19 @@ def generate_audio(processed_video_path: str, prompts: str, prompt_type: str, ep
 
     # Load models
     print('Loading models...')
-    video2rms_model, audio_ldm_controlnet = load_models(epoch, ckpt_dir, ckpt_dir, config, device)
+    video2rms_model, audio_ldm_controlnet = load_models(epoch, video2rms_ckpt_dir, rms2sound_ckpt_dir, config, device)
 
     # Process videos in batches
-    processed_video_paths = [processed_video_path]
     for i in range(0, len(processed_video_paths), batch_size):
         batch_video_paths = processed_video_paths[i:i+batch_size]
         batch_prompts = prompts[i:i+batch_size] if prompts else None
 
         # Prepare batch features
         batch_features = []
-        for v_path in batch_video_paths:
-            v_id = os.path.basename(v_path).split('.')[0]
-            rgb_feature = np.load(os.path.join(feature_dir, "feature_RGB", f"{v_id}.pkl"), allow_pickle=True)
-            flow_feature = np.load(os.path.join(feature_dir, "feature_Flow", f"{v_id}.pkl"), allow_pickle=True)
+        for processed_video_path in batch_video_paths:
+            feature_dir = '/'.join(os.path.dirname(processed_video_path).split('/')[:-1])
+            rgb_feature = np.load(os.path.join(feature_dir, f"feature_RGB", f"{os.path.basename(processed_video_path).split('.')[0]}.pkl"), allow_pickle=True)
+            flow_feature = np.load(os.path.join(feature_dir, f"feature_Flow", f"{os.path.basename(processed_video_path).split('.')[0]}.pkl"), allow_pickle=True)
             
             rgb_feature = pad_or_truncate_feature(rgb_feature, config.data.video_samples)
             flow_feature = pad_or_truncate_feature(flow_feature, config.data.video_samples)
@@ -249,15 +256,14 @@ def generate_audio(processed_video_path: str, prompts: str, prompt_type: str, ep
     del audio_ldm_controlnet
     torch.cuda.empty_cache()
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Add foley sound effects to a video clip with some text guidance")
-    parser.add_argument('-i', '--input-video', type=str, help='Input video file',)
+    parser.add_argument('-i', '--input-video-folder', type=str, help='Input video folder',)
     parser.add_argument('-p', '--prompt', nargs='*', help='Text prompt used to help guide the audio generation')
     args = parser.parse_args()
 
     prompt = args.prompt
-    video_file = args.input_video
+    video_folder = args.input_video_folder
     output_dir = './output'
     checkpoint_dir = './ckpt'
     os.makedirs(output_dir, exist_ok=True)
@@ -274,7 +280,7 @@ if __name__ == '__main__':
     config.freeze()
 
     device = create_device()
-    processed_video_path = preprocess_videos(video_file, config, output_dir, device)
+    processed_video_path = preprocess_videos(video_folder, config, output_dir, device)
     generate_audio(processed_video_path, prompt, 100, checkpoint_dir, output_dir, device)
     
     # Rename videos back to original names
