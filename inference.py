@@ -18,8 +18,14 @@ sys.path.append("external/video-foley/RMS_ControlNet_Inference")
 sys.path.append("external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm")
 
 from config import _C as config
+
+root_dir = os.getcwd()
+submodule_dir = os.path.join(root_dir, "external/video-foley")
+os.chdir(submodule_dir)
 from data_utils import RMS, pad_or_truncate_feature
 from util import load_config, load_models, save_audio, save_video_with_audio, interpolate_rms_for_rms2sound, set_seed
+os.chdir(root_dir)
+
 from utils.utils import create_device
 
 # Import preprocessing functions
@@ -281,7 +287,7 @@ if __name__ == '__main__':
 
     device = create_device()
     processed_video_path = preprocess_videos(video_folder, config, output_dir, device)
-    generate_audio(processed_video_path, prompt, 100, checkpoint_dir, output_dir, device)
+    generate_audio(processed_video_paths=processed_video_path, prompts=[prompt], epoch=500, video2rms_ckpt_dir=checkpoint_dir, rms2sound_ckpt_dir=checkpoint_dir, config=config, output_dir=output_dir, device=device)
     
     # Rename videos back to original names
     for video_path in glob(os.path.join(args.video_dir, '*.mp4')) + glob(os.path.join(args.video_dir, '*.avi')):
