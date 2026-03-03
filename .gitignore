@@ -13,6 +13,7 @@ __pycache__/
 build/
 output/
 mnt/
+src/
 ckpt/
 data/
 develop-eggs/
@@ -26,6 +27,7 @@ parts/
 sdist/
 var/
 wheels/
+taming/
 share/python-wheels/
 *.egg-info/
 .installed.cfg

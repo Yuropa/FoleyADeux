@@ -16,6 +16,7 @@ import sys
 sys.path.append("external/video-foley")
 sys.path.append("external/video-foley/RMS_ControlNet_Inference")
 sys.path.append("external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm")
+sys.path.append("src/taming-transformers")
 
 from config import _C as config
 
@@ -199,6 +200,15 @@ def generate_audio(processed_video_paths: List[str], prompts: List[str], epoch: 
     print('Loading models...')
     video2rms_model, audio_ldm_controlnet = load_models(epoch, video2rms_ckpt_dir, rms2sound_ckpt_dir, config, device)
 
+    print(f"Ensuring sampler uses {device}...")
+
+    # Access the internal sampler and force its device attribute
+    if hasattr(audio_ldm_controlnet.model, 'sampler'):
+        audio_ldm_controlnet.model.sampler.device = device
+    # Some versions use a specific DDIM sampler attribute
+    if hasattr(audio_ldm_controlnet.model, 'ddim_sampler'):
+        audio_ldm_controlnet.model.ddim_sampler.device = device
+
     # Process videos in batches
     for i in range(0, len(processed_video_paths), batch_size):
         batch_video_paths = processed_video_paths[i:i+batch_size]
@@ -217,7 +227,7 @@ def generate_audio(processed_video_paths: List[str], prompts: List[str], epoch: 
             combined_feature = np.concatenate([rgb_feature, flow_feature], axis=1)
             batch_features.append(combined_feature)
 
-        batch_features_tensor = torch.from_numpy(np.stack(batch_features)).to(device)
+        batch_features_tensor = torch.from_numpy(np.stack(batch_features).astype(np.float32)).to(device)
 
         print('Generating RMS from video features...')
         video2rms_model.eval()
@@ -287,7 +297,7 @@ if __name__ == '__main__':
 
     device = create_device()
     processed_video_path = preprocess_videos(video_folder, config, output_dir, device)
-    generate_audio(processed_video_paths=processed_video_path, prompts=[prompt], epoch=500, video2rms_ckpt_dir=checkpoint_dir, rms2sound_ckpt_dir=checkpoint_dir, config=config, output_dir=output_dir, device=device)
+    generate_audio(processed_video_paths=processed_video_path, prompts=prompt, epoch=500, video2rms_ckpt_dir=checkpoint_dir, rms2sound_ckpt_dir=checkpoint_dir, config=config, output_dir=output_dir, device=device)
     
     # Rename videos back to original names
     for video_path in glob(os.path.join(args.video_dir, '*.mp4')) + glob(os.path.join(args.video_dir, '*.avi')):

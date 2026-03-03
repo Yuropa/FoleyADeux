@@ -45,6 +45,7 @@ pip install torchaudio
 pip install timm
 pip install matplotlib
 pip install av
+python -m pip install git+https://github.com/CompVis/taming-transformers
 
 git submodule init
 git submodule update
