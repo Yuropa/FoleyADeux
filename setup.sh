@@ -1,68 +1,53 @@
 #!/bin/bash
 
-conda create -n foley python=3.9.18 -y  
+# 1. Create a fresh environment with Python and FFmpeg
+echo "Creating Conda environment 'foley'..."
+conda create -y -n foley python=3.10 pip setuptools wheel
+
+# 2. Activate the environment (the hook makes it work inside a script)
+eval "$(conda shell.bash hook)"
 conda activate foley
+conda install -c conda-forge "ffmpeg=*=*gpl*" -y
 
-conda install pip -y
-pip install --upgrade pip wheel
+# 3. Install the correct PyTorch
+echo "Installing PyTorch..."
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+else
+    pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+fi
 
-#conda install -c pytorch -y \
-#    pytorch==2.1.1 \
- #   torchvision==0.16.1 \
-#    torchaudio==2.1.1
-#pip install torcheval
+# 4. Install standard Pip packages safely
+echo "Installing pip requirements..."
+pip install -r requirements.txt
 
-conda install pytorch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1 pytorch-cuda=11.8 -c pytorch -y
-pip install torcheval
-
-conda install ffmpeg=6.1.0 x264 -c conda-forge -y
-conda install -c conda-forge -y \
-    pillow=10.0.1 \
-    pyyaml=6.0.1 \
-    numpy \
-    scipy \
-    scikit-learn \
-    opencv \
-    ffmpeg=6.1.0 \
-    x264 \
-    lightning \
-    git-lfs \
-    moviepy=1.0.3
-
-pip install librosa==0.10.1
-pip install yacs==0.1.8
-pip install einops
-pip install torchvision
-pip install h5py
-pip install torchlibrosa
-pip install transformers
-pip install ftfy
-pip install braceexpand
-pip install pandas
-pip install webdataset
-pip install wget
-pip install torchaudio
-pip install timm
-pip install matplotlib
-pip install av
-python -m pip install git+https://github.com/CompVis/taming-transformers
-
-git submodule init
-git submodule update
-
+# 5. Fetch and install local submodules
+echo "Updating git submodules..."
 git submodule update --init --recursive
 
-export KMP_DUPLICATE_LIB_OK=TRUE
+echo "Installing local editable packages..."
+pip install -e ./external/video-foley/RMS_ControlNet_Inference
+pip install -e ./external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm
+pip install -e ./external/video-foley/RMS_ControlNet_Inference/TorchJAEKWON
 
-#conda install lightning -c conda-forge
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference/TorchJAEKWON
+echo "Setup Complete! Run 'conda activate foley' to get started."
+
+echo "Downloading model checkpoints..."
+mkdir -p ./ckpt
+HF_BASE="https://huggingface.co/jnwnlee/video-foley/resolve/main"
+for FILE in checkpoint_000500_Video2RMS.pt ControlNetstep300000.pth opts.yml; do
+    if [ ! -f "./ckpt/$FILE" ]; then
+        echo "  Downloading $FILE..."
+        curl -L --retry 3 "$HF_BASE/$FILE" -o "./ckpt/$FILE"
+    else
+        echo "  $FILE already exists, skipping."
+    fi
+done
 
 echo "Preparing audio dataset..."
 
-DATA_DIR="./data"
-TARGET_DIR_PARENT="./mnt"
+DATA_DIR="/Data"
+TARGET_DIR_PARENT="/Data"
 TARGET_DIR="$TARGET_DIR_PARENT/GreatestHits"
 ZIP_FILE="$DATA_DIR/vis-data.zip"
 URL="https://web.eecs.umich.edu/~ahowens/vis/vis-data.zip"
@@ -89,6 +74,3 @@ else
 
     echo "Dataset ready at $TARGET_DIR"
 fi
-
-echo "Downloading models..."
-git clone https://huggingface.co/jnwnlee/video-foley ./ckpt
