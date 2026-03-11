@@ -21,14 +21,11 @@ fi
 echo "Installing pip requirements..."
 pip install -r requirements.txt
 
-# 5. Fetch and install local submodules
-echo "Updating git submodules..."
-git submodule update --init --recursive
-
-echo "Installing local editable packages..."
-pip install -e ./external/video-foley/RMS_ControlNet_Inference
-pip install -e ./external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm
-pip install -e ./external/video-foley/RMS_ControlNet_Inference/TorchJAEKWON
+# 5. Install local packages from libs/
+echo "Installing local packages..."
+pip install -e ./libs/AudioLDM/AudioLDM/Model/AudioLdm
+pip install -e ./libs/AudioLDM
+pip install -e ./libs/TorchJaekwon
 
 echo "Setup Complete! Run 'conda activate foley' to get started."
 
@@ -43,34 +40,3 @@ for FILE in checkpoint_000500_Video2RMS.pt ControlNetstep300000.pth opts.yml; do
         echo "  $FILE already exists, skipping."
     fi
 done
-
-echo "Preparing audio dataset..."
-
-DATA_DIR="/Data"
-TARGET_DIR_PARENT="/Data"
-TARGET_DIR="$TARGET_DIR_PARENT/GreatestHits"
-ZIP_FILE="$DATA_DIR/vis-data.zip"
-URL="https://web.eecs.umich.edu/~ahowens/vis/vis-data.zip"
-
-# If dataset already exists, skip download & extraction
-if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
-    echo "Dataset already exists at $TARGET_DIR, skipping download and extraction."
-else
-    # Make sure data directory exists
-    mkdir -p "$TARGET_DIR"
-    mkdir -p "$DATA_DIR"
-
-    echo "Downloading audio dataset (~50GB)..."
-    curl -L -C - "$URL" -o "$ZIP_FILE" || { echo "Download failed, skipping."; }
-
-    echo "Extracting dataset..."
-    unzip -q "$ZIP_FILE" -d "$TARGET_DIR" || { echo "Extraction failed, skipping."; }
-
-    mv "$TARGET_DIR_PARENT/vis-data/"* "$TARGET_DIR"/
-    rm -rf "$TARGET_DIR_PARENT/vis-data"
-
-    echo "Cleaning up zip file..."
-    rm -f "$ZIP_FILE"
-
-    echo "Dataset ready at $TARGET_DIR"
-fi

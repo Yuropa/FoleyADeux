@@ -35,23 +35,18 @@ from tqdm import tqdm
 from yacs.config import CfgNode as CN
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sys-path setup (must happen before any submodule imports)
+# Sys-path setup
 # ──────────────────────────────────────────────────────────────────────────────
 ROOT_DIR = os.getcwd()
-EXTERN   = os.path.join(ROOT_DIR, "external/video-foley")
 CKPT_DIR = os.path.join(ROOT_DIR, "ckpt")
 
-sys.path.insert(0, EXTERN)
-sys.path.insert(0, os.path.join(EXTERN, "RMS_ControlNet_Inference"))
-sys.path.insert(0, os.path.join(EXTERN, "RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "video2rms"))
 
-os.chdir(EXTERN)
 from util import load_config, load_models, save_video_with_audio, interpolate_rms_for_rms2sound
 from data_utils import RMS, pad_or_truncate_feature
 from preprocess.extract_audio_and_video import pipline_align, pipline_cut
 from preprocess.extract_rgb_flow_raft import cal_for_frames
 from preprocess.extract_feature import extract_bn_inception_feature
-os.chdir(ROOT_DIR)
 
 from utils.utils import create_device
 

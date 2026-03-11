@@ -16,6 +16,7 @@ mnt/
 src/
 ckpt/
 data/
+external/
 develop-eggs/
 dist/
 downloads/
