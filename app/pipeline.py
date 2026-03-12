@@ -44,9 +44,10 @@ from data_utils import RMS, pad_or_truncate_feature  # noqa: E402
 # Loaded once on first Generate click, then reused for every subsequent run.
 _config: Optional[CN] = None
 _device: Optional[str] = None
+_torch_dtype: Optional[str] = None
 
 
-def _get_config_and_device() -> Tuple[CN, str]:
+def _get_config() -> Tuple[CN, str]:
     global _config, _device
     if _config is None:
         _config = load_config(os.path.join(CKPT_DIR, "opts.yml"))
@@ -56,8 +57,8 @@ def _get_config_and_device() -> Tuple[CN, str]:
         _config.data.video_height = 256
         _config.freeze()
     if _device is None:
-        _device = create_device()
-    return _config, _device
+        _device, _torch_dtype = create_device()
+    return _config, _device, _torch_dtype
 
 
 # ── Audio generation loop ────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ def _run_audio_generation(
     config: CN,
     output_dir: str,
     device: str,
+    torch_dtype: str,
     text_prompt: str,
     epoch: int = 500,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[str]]:
@@ -109,7 +111,7 @@ def _run_audio_generation(
     flow_dir    = os.path.join(feature_dir, "feature_Flow")
 
     video2rms_model, audio_ldm_controlnet = load_models(
-        epoch, CKPT_DIR, CKPT_DIR, config, device
+        epoch, CKPT_DIR, CKPT_DIR, config, device, torch_dtype
     )
     video2rms_model.eval()
 
@@ -237,7 +239,7 @@ def generate(
     -------
     str  — absolute path to the merged result video.
     """
-    config, device = _get_config_and_device()
+    config, device,  torch_dtype = _get_config()
 
     theme_prefix = THEMES.get(theme, "")
     full_prompt  = (theme_prefix + prompt.strip()).strip(", ").strip()
@@ -268,6 +270,7 @@ def generate(
         config=config,
         output_dir=out_dir,
         device=device,
+        torch_dtype=torch_dtype,
         text_prompt=full_prompt,
     )
 
@@ -332,7 +335,7 @@ def run_inference(
     if not prompt.strip():
         raise gr.Error("Please enter a sound prompt.")
 
-    config, device = _get_config_and_device()
+    config, device, torch_dtype = _get_config()
     full_prompt = (THEMES.get(theme, "") + prompt.strip()).strip(", ").strip()
 
     run_id    = f"run_{os.getpid()}_{id(video_path)}"
@@ -365,6 +368,7 @@ def run_inference(
             config=config,
             output_dir=out_dir,
             device=device,
+            torch_dtype=torch_dtype,
             text_prompt=full_prompt,
         )
 

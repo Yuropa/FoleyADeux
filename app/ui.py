@@ -195,7 +195,7 @@ def build_ui() -> gr.Blocks:
                     )
 
                 auto_btn = gr.Button(
-                    "✨ Auto-caption  (coming soon)",
+                    "✨ Auto-caption",
                     variant="secondary",
                     elem_classes=["autocap-btn"],
                 )

@@ -84,7 +84,17 @@ ORANGE  = "#f78166"
 
 # ── Device selection ─────────────────────────────────────────────────────────
 
-def create_device() -> str:
+def create_device() -> tuple:
     """Return 'cuda' if a GPU is available, otherwise 'cpu'."""
     import torch
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+        torch_dtype = torch.float16
+    elif torch.backends.mps.is_available():
+        device = "mps"
+        torch_dtype = torch.float32
+    else:
+        device = "cpu"
+        torch_dtype = torch.float32
+
+    return (device, torch_dtype)
