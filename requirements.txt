@@ -1,5 +1,6 @@
 av==16.1.0
 braceexpand==0.1.7
+gradio>=4.0,<6.0
 ffmpeg-python==0.2.0
 git-lfs==1.6
 librosa==0.10.1
