@@ -223,7 +223,6 @@ def generate_audio(
     output_dir: str,
     device: torch.device,
     text_prompt: Optional[str] = None,
-    audio_prompt_path: Optional[str] = None,
     epoch: int = 500,
     ckpt_dir: str = CKPT_DIR,
 ) -> None:
@@ -238,8 +237,8 @@ def generate_audio(
     as amplitude modulation on the generated waveform so the sound follows
     the rhythm and intensity of the on-screen motion.
     """
-    assert text_prompt is not None or audio_prompt_path is not None, \
-        "Provide either --prompt (text) or --audio-prompt (audio file)"
+    assert text_prompt is not None, \
+        "Provide --prompt (text)"
 
     audio_out = os.path.join(output_dir, 'audio')
     video_out = os.path.join(output_dir, 'video')
@@ -255,11 +254,6 @@ def generate_audio(
     video2rms_model.eval()
 
     mu_bins = RMS.get_mu_bins(config.data.rms_mu, config.data.rms_num_bins, config.data.rms_min)
-
-    prompt_audio_tensor = None
-    if audio_prompt_path:
-        prompt_audio, _ = librosa.load(audio_prompt_path, sr=config.data.audio_sample_rate)
-        prompt_audio_tensor = torch.from_numpy(prompt_audio).unsqueeze(0).to(device)
 
     # ── Bypass ControlNet: patch apply_model to ignore the RMS branch ─────────
     # The ControlNet UNet wrapper passes rms=cond_dict['control_net_condition']
@@ -308,7 +302,7 @@ def generate_audio(
 
             # ── Generate with base AudioLDM (ControlNet bypassed) ─────────────
             generated_audio_raw = audio_ldm_controlnet.generate(
-                waveform=prompt_audio_tensor if audio_prompt_path else None,
+                waveform=None,
                 text_prompt=text_prompt if not audio_prompt_path else None,
                 rms=rms_for_ldm,
             )  # numpy (samples,)
@@ -363,8 +357,6 @@ if __name__ == '__main__':
     prompt_group = parser.add_mutually_exclusive_group(required=True)
     prompt_group.add_argument('-p', '--prompt', type=str,
                                help='Text prompt describing the desired sound')
-    prompt_group.add_argument('-a', '--audio-prompt', type=str, dest='audio_prompt',
-                               help='Path to reference audio file (timbre transfer)')
 
     parser.add_argument('--epoch',       type=int, default=500,
                         help='Video2RMS checkpoint epoch (default: 500)')
@@ -401,7 +393,6 @@ if __name__ == '__main__':
         output_dir=args.output_dir,
         device=device,
         text_prompt=args.prompt,
-        audio_prompt_path=args.audio_prompt,
         epoch=args.epoch,
         ckpt_dir=CKPT_DIR,
     )
