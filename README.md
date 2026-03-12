@@ -37,15 +37,21 @@ python -m app --share            # public Gradio tunnel URL
 - **Upload** any `.mp4` / `.avi` video, or pick one from the built-in **example gallery**
 - **Sound prompt** — describe the sound you want in free text
 - **Theme** — prefix your prompt with a style preset (Cinematic, Cartoon, Funny, Horror, Nature, Sci-Fi, Fantasy, Rock, Jazz)
-- **Auto-caption** button *(coming soon)* — a vision-language model will analyse the video and suggest a default prompt
+- **Auto-caption** button — powered by **SmolVLM2-2.2B-Instruct**; analyses the video and suggests a sound prompt automatically (first run downloads the model ~4 GB)
 - **Output video** — all segments merged into one, with generated foley audio muxed in
 - **Audio visualisations** — waveform, mel spectrogram, and RMS envelope plot
 
 ### Command line
 
 ```bash
-# Minimal
+# Explicit prompt
 python infer.py --video examples/hitting_a_plastic_bag.mp4 --prompt "hitting a plastic bag"
+
+# Auto-caption (SmolVLM2 generates the prompt from the video)
+python infer.py --video examples/hitting_a_plastic_bag.mp4 --auto-caption
+
+# Combine both — auto-caption is appended to the manual prompt
+python infer.py --video examples/typing_on_a_keyboard.mp4 --prompt "keyboard" --auto-caption
 
 # With theme and explicit output directory
 python infer.py \
@@ -54,6 +60,14 @@ python infer.py \
   --theme  cinematic \
   --output output/my_run
 ```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--video` | `-v` | Path to input video (`.mp4` / `.avi`) |
+| `--prompt` | `-p` | Sound description (optional if `--auto-caption` is set) |
+| `--auto-caption` | `-a` | Use SmolVLM2 to generate the prompt from the video |
+| `--theme` | `-t` | Style preset (see below) |
+| `--output` | `-o` | Output directory (defaults to `gradio_output/run_<id>/`) |
 
 Available themes: `none`, `cinematic`, `cartoon`, `funny`, `horror`, `nature`, `sci-fi`, `fantasy`, `rock`, `jazz`
 
@@ -88,7 +102,7 @@ app/
   preprocess.py  — video preprocessing pipeline (RAFT, BN-Inception)
   pipeline.py    — shared core: generate() + Gradio run_inference() wrapper
   plots.py       — waveform, spectrogram, RMS envelope figures
-  caption.py     — auto-caption stub (future VLM integration)
+  caption.py     — auto-caption via SmolVLM2-2.2B-Instruct (lazy-loaded on first use)
   ui.py          — Gradio layout and event wiring
   __main__.py    — python -m app entry point
 video2rms/       — Video2RMS model and data utilities
