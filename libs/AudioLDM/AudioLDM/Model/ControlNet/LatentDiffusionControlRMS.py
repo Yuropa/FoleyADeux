@@ -167,6 +167,7 @@ class LatentDiffusionControlRMS(LatentDiffusion):
     def generate_sample(
         self,
         batchs,
+        device,
         ddim_steps=200,
         ddim_eta=1.0,
         x_T=None,
@@ -238,6 +239,7 @@ class LatentDiffusionControlRMS(LatentDiffusion):
                 x_T=x_T,
                 ddim=use_ddim,
                 ddim_steps=ddim_steps,
+                device=device,
                 eta=ddim_eta,
                 unconditional_guidance_scale=unconditional_guidance_scale,
                 unconditional_conditioning=unconditional_conditioning,
@@ -278,6 +280,7 @@ class LatentDiffusionControlRMS(LatentDiffusion):
         batch_size,
         ddim,
         ddim_steps,
+        device,
         unconditional_guidance_scale=1.0,
         unconditional_conditioning=None,
         mask=None,
@@ -292,7 +295,7 @@ class LatentDiffusionControlRMS(LatentDiffusion):
         if ddim:
             print("Use ddim sampler")
 
-            ddim_sampler = DDIMSamplerForControlNet(cfg_of_control_net=self.cfg_of_control_net, model = self)
+            ddim_sampler = DDIMSamplerForControlNet(cfg_of_control_net=self.cfg_of_control_net, model = self, device=device)
             samples, intermediates = ddim_sampler.sample(
                 ddim_steps,
                 batch_size,

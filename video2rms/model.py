@@ -146,9 +146,8 @@ class Video2RMS(nn.Module):
     
 
 def init_net(net, device, init_type='normal', init_gain=0.02):
-    assert (torch.cuda.is_available())
     net.to(device)
-    net = torch.nn.DataParallel(net, range(torch.cuda.device_count()))
+    net = torch.nn.DataParallel(net)
     init_weights(net, init_type, gain=init_gain)
     return net
 
@@ -182,12 +181,12 @@ class Video2Sound(nn.Module):
     Video2Sound model for training and inference, for video2rms task.
     Does not include the video feature extraction model, and RMS2Sound model.
     '''
-    def __init__(self, config):
+    def __init__(self, config, device):
         super(Video2Sound, self).__init__()
         self.config = config
         
         self.model_names = ['Video2RMS']
-        self.device = torch.device('cuda:0')
+        self.device = device
         self.Video2RMS = init_net(Video2RMS(config.model, config.data), self.device)
         
         self.RMSLoss = RMSLoss(config.train.loss, config.data.rms_discretize, 

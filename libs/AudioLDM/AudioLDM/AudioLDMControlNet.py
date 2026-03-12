@@ -55,6 +55,7 @@ class AudioLDMControlNet:
                 'text': [text_prompt],
                 'control_net_condition': rms.unsqueeze(1).unsqueeze(-1).to(self.device).float()
             }],
+            device = self.device,
             unconditional_guidance_scale=3.5, 
             ddim_steps=200,
             clap_embed_mode = 'text' if text_prompt is not None else 'audio'

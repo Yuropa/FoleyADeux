@@ -54,9 +54,9 @@ def load_config(config_path: str) -> CN:
     return result_config
 
 
-def load_model(epoch:int, ckpt_dir:str, config:CN) -> Video2Sound:
+def load_model(epoch:int, ckpt_dir:str, config:CN, device) -> Video2Sound:
     '''Returns Video2RMS model with loaded checkpoint'''
-    model = Video2Sound(config)
+    model = Video2Sound(config, device)
     
     checkpoint_path = glob(os.path.join(ckpt_dir, f'checkpoint_{epoch:06d}_*'))
     if len(checkpoint_path) == 0:
@@ -129,7 +129,7 @@ def load_models(epoch: int, video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, co
         raise FileNotFoundError(f"No ControlNetstep*.pth file found in {rms2sound_ckpt_dir}")
     
     # Load Video2RMS model
-    video2rms_model = load_model(epoch, video2rms_ckpt_dir, config).to(device)
+    video2rms_model = load_model(epoch, video2rms_ckpt_dir, config, device).to(device)
 
     # Load AudioLDMControlNet model
     audio_ldm_controlnet = AudioLDMControlNet(

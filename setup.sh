@@ -26,6 +26,7 @@ echo "Installing local packages..."
 pip install -e ./libs/AudioLDM/AudioLDM/Model/AudioLdm
 pip install -e ./libs/AudioLDM
 pip install -e ./libs/TorchJaekwon
+pip install -e ./libs/taming-transformers
 
 echo "Setup Complete! Run 'conda activate foley' to get started."
 

@@ -41,6 +41,8 @@ ROOT_DIR = os.getcwd()
 CKPT_DIR = os.path.join(ROOT_DIR, "ckpt")
 
 sys.path.insert(0, os.path.join(ROOT_DIR, "video2rms"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "libs", "taming-transformers"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "libs", "AudioLDM"))
 
 from util import load_config, load_models, save_video_with_audio, interpolate_rms_for_rms2sound
 from data_utils import RMS, pad_or_truncate_feature

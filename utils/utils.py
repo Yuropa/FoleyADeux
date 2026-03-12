@@ -3,7 +3,7 @@ import torch
 def create_device():
     if torch.cuda.is_available():
         return "cuda"
-    elif torch.mps.is_available():
-        return "mps"
+    #elif torch.backends.mps.is_available():
+    #    return "mps"
     else:
         return "cpu"
