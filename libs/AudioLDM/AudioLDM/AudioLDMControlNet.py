@@ -10,9 +10,11 @@ from AudioLDM.Model.ControlNet.LatentDiffusionControlRMS import LatentDiffusionC
 class AudioLDMControlNet:
     def __init__(self,
                  control_net_pretrained_path:str,
-                 device:torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                 device:torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+                 torch_dtype:any = torch.float32
                  ) -> None:
         self.device = device
+        self.torch_dtype = torch_dtype
         self.model = self.get_model()
         self.pretrained_load(control_net_pretrained_path)
         
@@ -39,7 +41,7 @@ class AudioLDMControlNet:
             pretrained_load[key] = self.model.state_dict()[key]
 
         self.model.load_state_dict(pretrained_load)
-        self.model = self.model.to(self.device)
+        self.model = self.model.to(self.torch_dtype).to(self.device)
         self.model.eval()
     
     @torch.no_grad()

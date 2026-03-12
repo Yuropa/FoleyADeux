@@ -145,8 +145,9 @@ class Video2RMS(nn.Module):
         return encoder_output
     
 
-def init_net(net, device, init_type='normal', init_gain=0.02):
+def init_net(net, device, torch_dtype, init_type='normal', init_gain=0.02):
     net.to(device)
+    net = net.to(torch_dtype)
     net = torch.nn.DataParallel(net)
     init_weights(net, init_type, gain=init_gain)
     return net
@@ -181,16 +182,17 @@ class Video2Sound(nn.Module):
     Video2Sound model for training and inference, for video2rms task.
     Does not include the video feature extraction model, and RMS2Sound model.
     '''
-    def __init__(self, config, device):
+    def __init__(self, config, device, torch_dtype):
         super(Video2Sound, self).__init__()
         self.config = config
         
         self.model_names = ['Video2RMS']
         self.device = device
-        self.Video2RMS = init_net(Video2RMS(config.model, config.data), self.device)
+        self.torch_dtype = torch_dtype
+        self.Video2RMS = init_net(Video2RMS(config.model, config.data), self.device, torch_dtype=self.torch_dtype)
         
         self.RMSLoss = RMSLoss(config.train.loss, config.data.rms_discretize, 
-                               config.data.rms_mu, config.data.rms_num_bins, config.data.rms_min).to(self.device)
+                               config.data.rms_mu, config.data.rms_num_bins, config.data.rms_min).to(self.device).to(self.torch_dtype)
         self.onset_supervision = config.train.onset_supervision
         if config.train.onset_supervision:
             self.onset_annotation_dir = config.data.onset_annotation_dir
@@ -211,7 +213,7 @@ class Video2Sound(nn.Module):
 
     def parse_batch(self, batch):
         feature, rms, video_name, video_class = batch
-        self.feature = feature.to(self.device).float()
+        self.feature = feature.to(self.device).to(self.torch_dtype)
         
         if type(rms) is not torch.Tensor and len(rms) == 2:
             self.gt_rms, self.gt_rms_continuous = rms

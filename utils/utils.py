@@ -2,8 +2,13 @@ import torch
 
 def create_device():
     if torch.cuda.is_available():
-        return "cuda"
-    #elif torch.backends.mps.is_available():
-    #    return "mps"
+        device = "cuda"
+        torch_dtype = "auto"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+        torch_dtype = torch.float32
     else:
-        return "cpu"
+        device = "cpu"
+        torch_dtype = "auto"
+
+    return (device, torch_dtype)

@@ -54,9 +54,9 @@ def load_config(config_path: str) -> CN:
     return result_config
 
 
-def load_model(epoch:int, ckpt_dir:str, config:CN, device) -> Video2Sound:
+def load_model(epoch:int, ckpt_dir:str, config:CN, device, torch_dtype) -> Video2Sound:
     '''Returns Video2RMS model with loaded checkpoint'''
-    model = Video2Sound(config, device)
+    model = Video2Sound(config, device, torch_dtype)
     
     checkpoint_path = glob(os.path.join(ckpt_dir, f'checkpoint_{epoch:06d}_*'))
     if len(checkpoint_path) == 0:
@@ -108,7 +108,7 @@ def interpolate_rms_for_rms2sound(rms:torch.tensor, audio_len:int=10, sr:int=160
 
 
 def load_models(epoch: int, video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, config: CN, 
-                device: torch.device) -> Tuple[nn.Module, AudioLDMControlNet]:
+                device: torch.device, torch_dtype: any) -> Tuple[nn.Module, AudioLDMControlNet]:
     '''Returns Video2RMS model and AudioLDMControlNet model with loaded checkpoint'''
     # Check for checkpoint file
     if epoch > -1:
@@ -129,12 +129,13 @@ def load_models(epoch: int, video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, co
         raise FileNotFoundError(f"No ControlNetstep*.pth file found in {rms2sound_ckpt_dir}")
     
     # Load Video2RMS model
-    video2rms_model = load_model(epoch, video2rms_ckpt_dir, config, device).to(device)
+    video2rms_model = load_model(epoch, video2rms_ckpt_dir, config, device, torch_dtype).to(device)
 
     # Load AudioLDMControlNet model
     audio_ldm_controlnet = AudioLDMControlNet(
         control_net_pretrained_path = os.path.join(rms2sound_ckpt_dir, 'ControlNetstep300000.pth'),
-        device = device
+        device = device,
+        torch_dtype = torch_dtype
     )
 
     return video2rms_model, audio_ldm_controlnet

@@ -51,6 +51,7 @@ from preprocess.extract_rgb_flow_raft import cal_for_frames
 from preprocess.extract_feature import extract_bn_inception_feature
 
 from utils.utils import create_device
+from utils.video_descriptions import VideoDescription
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ def preprocess_videos(
     config: CN,
     output_dir: str,
     device: torch.device,
+    torch_dtype: any,
     num_workers: int = 2,
     batch_size: int = 1,
 ) -> List[str]:
@@ -124,7 +126,26 @@ def preprocess_videos(
     for vp in video_paths:
         _add_silent_audio_if_needed(vp)
 
-    # ── Step 1: align video/audio lengths ────────────────────────────────────
+    # ── Step 1: Video content analysis ───────────────────────────────────────
+
+    descriptions_dir = os.path.join(feature_dir, "descriptions")
+    os.makedirs(descriptions_dir, exist_ok=True)
+
+    video_description = VideoDescription(device=device, torch_dtype=torch_dtype)
+    for vp in video_paths:
+        video_name = os.path.basename(vp).split('.')[0]
+        base = video_name.rsplit('_', 1)[0]
+        file_path = os.path.join(descriptions_dir, f"{base}_description.txt")
+
+        if not os.path.exists(file_path):
+            video_description_text = video_description.describe_video(vp)
+            print(f"Description for {video_name} : {video_description_text}")
+
+            with open(file_path, 'w') as f:
+                for line in video_description_text:
+                    f.write(f"{line}\n")
+
+    # ── Step 2: align video/audio lengths ────────────────────────────────────
     print("Preprocessing: aligning video/audio lengths...")
     with Pool(num_workers) as p:
         for _ in tqdm(
@@ -133,7 +154,7 @@ def preprocess_videos(
         ):
             pass
 
-    # ── Step 2: build segment IDs and dummy annotation files ─────────────────
+    # ── Step 3: build segment IDs and dummy annotation files ─────────────────
     segment_ids = []
     for vp in video_paths:
         video_name = os.path.basename(vp).split('.')[0]
@@ -150,7 +171,7 @@ def preprocess_videos(
             for i in range(num_segments):
                 f.write(f"{i * config.data.audio_samples} \n")
 
-    # ── Step 3: cut segments, resample audio, re-encode at target FPS ────────
+    # ── Step 4: cut segments, resample audio, re-encode at target FPS ────────
     print("Preprocessing: cutting segments...")
     with Pool(num_workers) as p:
         for _ in tqdm(
@@ -172,7 +193,7 @@ def preprocess_videos(
 
     segment_ids = [s[:-1] for s in segment_ids]  # drop trailing '_'
 
-    # ── Step 4: RAFT optical flow ─────────────────────────────────────────────
+    # ── Step 5: RAFT optical flow ─────────────────────────────────────────────
     print("Preprocessing: extracting optical flow...")
     of_dir = os.path.join(feature_dir, f"OF_{config.data.audio_samples}s_{config.data.video_fps}fps")
     clip_dir = os.path.join(feature_dir, f"videos_{config.data.audio_samples}s_{config.data.video_fps}fps")
@@ -181,18 +202,20 @@ def preprocess_videos(
     processed_video_paths = []
     for seg_id in tqdm(segment_ids, desc="RAFT optical flow"):
         clip_path = os.path.join(clip_dir, f"{seg_id}.mp4")
-        cal_for_frames(
-            video_path=clip_path,
-            output_dir=of_dir,
-            n_frames=int(config.data.video_fps * config.data.audio_samples),
-            width=config.data.video_width,
-            height=config.data.video_height,
-            batch_size=batch_size,
-            device=device,
-        )
+        flow_output = os.path.join(of_dir, f"{seg_id}.npy")
+        if not os.path.exists(flow_output):
+            cal_for_frames(
+                video_path=clip_path,
+                output_dir=of_dir,
+                n_frames=int(config.data.video_fps * config.data.audio_samples),
+                width=config.data.video_width,
+                height=config.data.video_height,
+                batch_size=batch_size,
+                device=device,
+            )
         processed_video_paths.append(clip_path)
 
-    # ── Step 5: BN-Inception feature extraction ───────────────────────────────
+    # ── Step 6: BN-Inception feature extraction ───────────────────────────────
     print("Preprocessing: extracting BN-Inception features...")
     file_list_path = os.path.join(feature_dir, 'temp_file_list.txt')
     with open(file_list_path, 'w') as f:
@@ -200,14 +223,17 @@ def preprocess_videos(
             f.write(f"{seg_id}\n")
 
     for modality in ['RGB', 'Flow']:
-        extract_bn_inception_feature(
-            input_dir=of_dir,
-            output_dir=os.path.join(feature_dir, f"feature_{modality}"),
-            modality=modality,
-            test_list=file_list_path,
-            workers=num_workers,
-            device=device,
-        )
+        mod_dir = os.path.join(feature_dir, f"feature_{modality}")
+        missing = [s for s in segment_ids if not os.path.exists(os.path.join(mod_dir, f"{s}.pkl"))]
+        if missing:
+            extract_bn_inception_feature(
+                input_dir=of_dir,
+                output_dir=os.path.join(feature_dir, f"feature_{modality}"),
+                modality=modality,
+                test_list=file_list_path,
+                workers=num_workers,
+                device=device,
+            )
 
     return processed_video_paths
 
@@ -222,6 +248,7 @@ def generate_audio(
     config: CN,
     output_dir: str,
     device: torch.device,
+    torch_dtype: any,
     text_prompt: Optional[str] = None,
     epoch: int = 500,
     ckpt_dir: str = CKPT_DIR,
@@ -237,8 +264,6 @@ def generate_audio(
     as amplitude modulation on the generated waveform so the sound follows
     the rhythm and intensity of the on-screen motion.
     """
-    assert text_prompt is not None, \
-        "Provide --prompt (text)"
 
     audio_out = os.path.join(output_dir, 'audio')
     video_out = os.path.join(output_dir, 'video')
@@ -248,9 +273,10 @@ def generate_audio(
     feature_dir = os.path.join(output_dir, 'features')
     rgb_dir  = os.path.join(feature_dir, 'feature_RGB')
     flow_dir = os.path.join(feature_dir, 'feature_Flow')
+    descriptions_dir = os.path.join(feature_dir, "descriptions")
 
     print("Loading models...")
-    video2rms_model, audio_ldm_controlnet = load_models(epoch, ckpt_dir, ckpt_dir, config, device)
+    video2rms_model, audio_ldm_controlnet = load_models(epoch, ckpt_dir, ckpt_dir, config, device, torch_dtype)
     video2rms_model.eval()
 
     mu_bins = RMS.get_mu_bins(config.data.rms_mu, config.data.rms_num_bins, config.data.rms_min)
@@ -273,6 +299,12 @@ def generate_audio(
             # ── Load & combine features ───────────────────────────────────────
             rgb_feat  = np.load(os.path.join(rgb_dir,  f"{seg_id}.pkl"), allow_pickle=True)
             flow_feat = np.load(os.path.join(flow_dir, f"{seg_id}.pkl"), allow_pickle=True)
+
+            base_video_name = seg_id.rsplit('_', 1)[0]
+            base_video_name = base_video_name.rsplit('_', 1)[0]
+            with open(os.path.join(descriptions_dir, f"{base_video_name}_description.txt"), 'r') as f:
+                video_descr = f.read().strip()
+
             rgb_feat  = pad_or_truncate_feature(rgb_feat,  config.data.video_samples)
             flow_feat = pad_or_truncate_feature(flow_feat, config.data.video_samples)
             combined  = np.concatenate([rgb_feat, flow_feat], axis=1)
@@ -300,10 +332,17 @@ def generate_audio(
                 hop_len=160,
             ).to(device)
 
+            parts = []
+            if text_prompt:
+                parts.append(f"In the style of {text_prompt}")
+            if video_descr:
+                parts.append(video_descr)
+            combined_prompt = " ".join(parts)
+
             # ── Generate with base AudioLDM (ControlNet bypassed) ─────────────
             generated_audio_raw = audio_ldm_controlnet.generate(
                 waveform=None,
-                text_prompt=text_prompt if not audio_prompt_path else None,
+                text_prompt=combined_prompt,
                 rms=rms_for_ldm,
             )  # numpy (samples,)
 
@@ -363,7 +402,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=2,
                         help='Parallel workers for preprocessing (default: 2)')
     parser.add_argument('--batch-size',  type=int, default=1,
-                        help='RAFT batch size (default: 1)')
+                        help='Batch size (default: 1)')
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -376,13 +415,14 @@ if __name__ == '__main__':
     config.data.training_files = []
     config.freeze()
 
-    device = create_device()
+    device, torch_dtype = create_device()
 
     processed_video_paths = preprocess_videos(
         video_dir=args.input_dir,
         config=config,
         output_dir=args.output_dir,
         device=device,
+        torch_dtype=torch_dtype,
         num_workers=args.num_workers,
         batch_size=args.batch_size,
     )
@@ -392,6 +432,7 @@ if __name__ == '__main__':
         config=config,
         output_dir=args.output_dir,
         device=device,
+        torch_dtype=torch_dtype,
         text_prompt=args.prompt,
         epoch=args.epoch,
         ckpt_dir=CKPT_DIR,
