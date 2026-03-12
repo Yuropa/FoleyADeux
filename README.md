@@ -8,67 +8,93 @@ Video-to-foley pipeline that generates any desired sound synchronised to on-scre
 
 ## How it works
 
-1. **Video preprocessing** — videos are segmented, optical flow is extracted (RAFT), and BN-Inception RGB/Flow features are computed.
+1. **Video preprocessing** — videos are segmented into 10-second clips; optical flow is extracted with RAFT, and BN-Inception RGB/Flow features are computed per segment.
 2. **Video2RMS** — predicts an RMS envelope (timing + dynamics) from the visual features.
-3. **AudioLDM (free mode)** — the Greatest-Hits ControlNet branch is bypassed so the base AudioLDM + CLAP text/audio embedding can produce *any* sound. The Video2RMS envelope is then applied as amplitude modulation to impose the video's rhythm on the output.
+3. **AudioLDM** — the base AudioLDM + CLAP text embedding generates *any* sound you describe.
+4. **Amplitude modulation** — the Video2RMS envelope is applied to the generated audio so the output's rhythm and intensity follow the on-screen motion.
+5. **Merge** — all output segments are concatenated into a single result video.
 
 ## Setup
 
-`setup.sh` creates the `foley` conda environment, installs all dependencies, and downloads the model checkpoints automatically.
-
-**Linux / macOS / Windows (WSL2 recommended) / Windows (Git Bash + Conda)**
+`setup.sh` creates the `foley` conda environment, installs all dependencies, downloads the model checkpoints, and writes the inference config automatically.
 
 ```bash
 bash setup.sh
 conda activate foley
 ```
 
-```bash
-source ./setup.sh
-```
-
 ## Usage
 
+### Web UI
+
 ```bash
-# text prompt
-python inference.py -i examples/ -p "a dog barking"
-python inference.py -i examples/ -p "orchestral strings"
-
-# reference audio (timbre transfer)
-python inference.py -i examples/ -a path/to/reference.wav
-
-# custom output directory
-python inference.py -i examples/ -p "glass shattering" -o ./my_output
+python -m app                    # http://localhost:7860
+python -m app --port 8080
+python -m app --share            # public Gradio tunnel URL
 ```
 
-### Arguments
+**UI features**
+- **Upload** any `.mp4` / `.avi` video, or pick one from the built-in **example gallery**
+- **Sound prompt** — describe the sound you want in free text
+- **Theme** — prefix your prompt with a style preset (Cinematic, Cartoon, Funny, Horror, Nature, Sci-Fi, Fantasy, Rock, Jazz)
+- **Auto-caption** button *(coming soon)* — a vision-language model will analyse the video and suggest a default prompt
+- **Output video** — all segments merged into one, with generated foley audio muxed in
+- **Audio visualisations** — waveform, mel spectrogram, and RMS envelope plot
 
-| Flag | Description |
-|------|-------------|
-| `-i / --input-dir` | Folder containing input `.mp4` / `.avi` files (required) |
-| `-p / --prompt` | Text prompt describing the desired sound |
-| `-a / --audio-prompt` | Path to reference audio file (timbre transfer) |
-| `-o / --output-dir` | Output folder (default: `./output`) |
-| `--epoch` | Video2RMS checkpoint epoch (default: `500`) |
-| `--num-workers` | Parallel workers for preprocessing (default: `2`) |
-| `--batch-size` | RAFT optical-flow batch size (default: `1`) |
+### Command line
 
-Exactly one of `-p` / `-a` is required.
+```bash
+# Minimal
+python infer.py --video examples/hitting_a_plastic_bag.mp4 --prompt "hitting a plastic bag"
+
+# With theme and explicit output directory
+python infer.py \
+  --video  examples/typing.mp4 \
+  --prompt "typing on a keyboard" \
+  --theme  cinematic \
+  --output output/my_run
+```
+
+Available themes: `none`, `cinematic`, `cartoon`, `funny`, `horror`, `nature`, `sci-fi`, `fantasy`, `rock`, `jazz`
 
 ## Output
 
 ```
-output/
-  audio/   — generated .wav files (one per video segment)
-  video/   — .mp4 files with generated audio muxed in
+gradio_output/          (UI)   or the path passed to --output (CLI)
+  run_<id>/
+    input/              — copy of the input video
+    output/
+      audio/            — generated .wav files (one per 10-s segment)
+      video/            — .mp4 clips with audio muxed in (one per segment)
+    result.mp4          — all segments merged into the final output
 ```
 
 ## Checkpoints
 
-Place the following files in `ckpt/`:
+Downloaded automatically by `setup.sh` into `ckpt/`:
 
 | File | Description |
 |------|-------------|
 | `checkpoint_000500_Video2RMS.pt` | Video2RMS model (epoch 500) |
-| `opts.yml` | Training / data configuration |
+| `ControlNetstep300000.pth` | AudioLDM ControlNet weights |
+| `opts.yml` | Inference configuration (written by setup.sh) |
+
+## Project structure
+
+```
+infer.py         — CLI entry point (no Gradio required)
+app/
+  config.py      — paths, theme definitions, colour palette, create_device()
+  preprocess.py  — video preprocessing pipeline (RAFT, BN-Inception)
+  pipeline.py    — shared core: generate() + Gradio run_inference() wrapper
+  plots.py       — waveform, spectrogram, RMS envelope figures
+  caption.py     — auto-caption stub (future VLM integration)
+  ui.py          — Gradio layout and event wiring
+  __main__.py    — python -m app entry point
+video2rms/       — Video2RMS model and data utilities
+libs/            — AudioLDM, TorchJaekwon
+ckpt/            — model checkpoints and inference config (gitignored)
+examples/        — sample videos for the UI gallery
+```
+
 

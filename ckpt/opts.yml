@@ -1,0 +1,17 @@
+data:
+  audio_sample_rate: 16000
+  audio_samples: 10
+  video_samples: 300
+  rms_discretize: true
+  rms_hop: 128
+  rms_min: 0.01
+  rms_mu: 63
+  rms_nframes: 512
+  rms_num_bins: 64
+  rms_samples: 1250
+model:
+  encoder_embedding_dim: 2048
+  encoder_kernel_size: 5
+  encoder_n_convolutions: 3
+  encoder_n_lstm: 2
+
