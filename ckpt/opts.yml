@@ -9,6 +9,7 @@ data:
   rms_nframes: 512
   rms_num_bins: 64
   rms_samples: 1250
+  envelope_decay: 0.997
 model:
   encoder_embedding_dim: 2048
   encoder_kernel_size: 5

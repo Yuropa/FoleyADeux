@@ -84,6 +84,7 @@ def preprocess_videos(
     config: CN,
     output_dir: str,
     device: str,
+    dtype: any,
     num_workers: int = 2,
     batch_size: int = 1,
 ) -> List[str]:
@@ -208,6 +209,7 @@ def preprocess_videos(
             test_list=file_list_path,
             workers=num_workers,
             device=device,
+            dtype=dtype
         )
 
     return processed_video_paths

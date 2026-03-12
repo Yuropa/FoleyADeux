@@ -11,6 +11,7 @@ _C.data.audio_samples     = 10
 _C.data.audio_sample_rate = 16000
 _C.data.rms_nframes       = 512
 _C.data.rms_hop           = 128
+_C.data.envelope_decay    = 0.9995
 _dummy_audio = np.pad(
     np.zeros(_C.data.audio_samples * _C.data.audio_sample_rate),
     (int((_C.data.rms_nframes - _C.data.rms_hop) / 2),

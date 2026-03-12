@@ -179,8 +179,16 @@ def _run_audio_generation(
                 np.linspace(0, 1, len(rms_np)),
                 rms_np,
             )
-            envelope  /= (envelope.max() + 1e-8)
-            generated  = generated_raw * envelope
+
+            # Apply exponential decay so peaks become impulses that tail off
+            envelope_decay = config.data.envelope_decay # controls decay speed (closer to 1 = slower decay)
+            shaped = np.zeros_like(envelope)
+            shaped[0] = envelope[0]
+            for i in range(1, len(envelope)):
+                shaped[i] = max(envelope[i], shaped[i-1] * envelope_decay)
+
+            shaped /= (shaped.max() + 1e-8)
+            generated = generated_raw * shaped
 
             # Persist audio and mux with the source clip
             audio_path = os.path.join(audio_out, f"{seg_id}_generated.wav")
@@ -260,6 +268,7 @@ def generate(
         config=config,
         output_dir=out_dir,
         device=device,
+        dtype=torch_dtype,
         num_workers=1,
         batch_size=1,
     )
@@ -357,6 +366,7 @@ def run_inference(
             config=config,
             output_dir=out_dir,
             device=device,
+            dtype=torch_dtype,
             num_workers=1,
             batch_size=1,
         )

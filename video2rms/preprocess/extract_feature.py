@@ -119,7 +119,7 @@ class TSNDataSet(Dataset):
 
 
 @torch.no_grad()
-def extract_bn_inception_feature(input_dir, output_dir, modality, test_list, device, input_size=224, 
+def extract_bn_inception_feature(input_dir, output_dir, modality, test_list, device, dtype, input_size=224, 
                                  crop_fusion_type='avg', dropout=0.7, workers=4, flow_prefix=''):
     net = TSN(modality,            
               consensus_type=crop_fusion_type,
@@ -152,7 +152,10 @@ def extract_bn_inception_feature(input_dir, output_dir, modality, test_list, dev
             os.makedirs(output_dir, exist_ok=True)
             ft_path = os.path.join(output_dir, video_path[0].split(os.sep)[-1]+".pkl")
             length = 3 if modality == 'RGB' else 2
-            input_var = torch.autograd.Variable(data.view(-1, length, data.size(2), data.size(3)))
+            input_var = torch.autograd.Variable(
+                data.view(-1, length, data.size(2), data.size(3))
+                .to(device, dtype=dtype)
+            )
             rst = np.squeeze(net(input_var).data.cpu().numpy().copy()) # shape: (n_frames, 1024->dim of last pooling layer in BN-Inception)
             pkl.dump(rst, open(ft_path, "wb"))
         except Exception as e:
@@ -168,7 +171,10 @@ def extract_bn_inception_feature(input_dir, output_dir, modality, test_list, dev
         
     net.cpu()
     del net
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
 
 if __name__ == '__main__':    
     # options

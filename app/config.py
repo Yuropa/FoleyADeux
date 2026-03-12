@@ -23,6 +23,7 @@ for _p in [
     ROOT_DIR,                                             # utils/
     os.path.join(ROOT_DIR, "video2rms"),                  # util.py, data_utils.py …
     os.path.join(ROOT_DIR, "libs", "AudioLDM"),
+    os.path.join(ROOT_DIR, "libs", "taming-transformers"),
 ]:
     if _p not in sys.path:
         sys.path.insert(0, _p)

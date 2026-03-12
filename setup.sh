@@ -28,6 +28,9 @@ pip install -e ./libs/AudioLDM/AudioLDM/Model/AudioLdm
 pip install -e ./libs/AudioLDM
 pip install -e ./libs/TorchJaekwon
 
+git clone https://github.com/CompVis/taming-transformers.git ./libs/taming-transformers
+pip install -e ./libs/taming-transformers
+
 # 6. Download model checkpoints (large binary files, not tracked by git)
 echo "Downloading model checkpoints..."
 mkdir -p ./ckpt
