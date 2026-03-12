@@ -334,7 +334,7 @@ def generate_audio(
 
             parts = []
             if text_prompt:
-                parts.append(f"In the style of {text_prompt}")
+                parts.append(text_prompt)
             if video_descr:
                 parts.append(video_descr)
             combined_prompt = " ".join(parts)
