@@ -1,94 +1,43 @@
 #!/bin/bash
 
-conda create -n foley python=3.9.18 -y  
+# 1. Create a fresh environment with Python and FFmpeg
+echo "Creating Conda environment 'foley'..."
+conda create -y -n foley python=3.10 pip setuptools wheel
+
+# 2. Activate the environment (the hook makes it work inside a script)
+eval "$(conda shell.bash hook)"
 conda activate foley
+conda install -c conda-forge "ffmpeg=*=*gpl*" -y
 
-conda install pip -y
-pip install --upgrade pip wheel
-
-#conda install -c pytorch -y \
-#    pytorch==2.1.1 \
- #   torchvision==0.16.1 \
-#    torchaudio==2.1.1
-#pip install torcheval
-
-conda install pytorch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1 pytorch-cuda=11.8 -c pytorch -y
-pip install torcheval
-
-conda install ffmpeg=6.1.0 x264 -c conda-forge -y
-conda install -c conda-forge -y \
-    pillow=10.0.1 \
-    pyyaml=6.0.1 \
-    numpy \
-    scipy \
-    scikit-learn \
-    opencv \
-    ffmpeg=6.1.0 \
-    x264 \
-    lightning \
-    git-lfs \
-    moviepy=1.0.3
-
-pip install librosa==0.10.1
-pip install yacs==0.1.8
-pip install einops
-pip install torchvision
-pip install h5py
-pip install torchlibrosa
-pip install transformers
-pip install ftfy
-pip install braceexpand
-pip install pandas
-pip install webdataset
-pip install wget
-pip install torchaudio
-pip install timm
-pip install matplotlib
-pip install av
-python -m pip install git+https://github.com/CompVis/taming-transformers
-
-git submodule init
-git submodule update
-
-git submodule update --init --recursive
-
-export KMP_DUPLICATE_LIB_OK=TRUE
-
-#conda install lightning -c conda-forge
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference/AudioLDMControlNetInfer/Model/AudioLdm
-#pip install -e ./external/video-foley/RMS_ControlNet_Inference/TorchJAEKWON
-
-echo "Preparing audio dataset..."
-
-DATA_DIR="./data"
-TARGET_DIR_PARENT="./mnt"
-TARGET_DIR="$TARGET_DIR_PARENT/GreatestHits"
-ZIP_FILE="$DATA_DIR/vis-data.zip"
-URL="https://web.eecs.umich.edu/~ahowens/vis/vis-data.zip"
-
-# If dataset already exists, skip download & extraction
-if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
-    echo "Dataset already exists at $TARGET_DIR, skipping download and extraction."
+# 3. Install the correct PyTorch
+echo "Installing PyTorch..."
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cpu
 else
-    # Make sure data directory exists
-    mkdir -p "$TARGET_DIR"
-    mkdir -p "$DATA_DIR"
-
-    echo "Downloading audio dataset (~50GB)..."
-    curl -L -C - "$URL" -o "$ZIP_FILE" || { echo "Download failed, skipping."; }
-
-    echo "Extracting dataset..."
-    unzip -q "$ZIP_FILE" -d "$TARGET_DIR" || { echo "Extraction failed, skipping."; }
-
-    mv "$TARGET_DIR_PARENT/vis-data/"* "$TARGET_DIR"/
-    rm -rf "$TARGET_DIR_PARENT/vis-data"
-
-    echo "Cleaning up zip file..."
-    rm -f "$ZIP_FILE"
-
-    echo "Dataset ready at $TARGET_DIR"
+    pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
 fi
 
-echo "Downloading models..."
-git clone https://huggingface.co/jnwnlee/video-foley ./ckpt
+# 4. Install standard Pip packages safely
+echo "Installing pip requirements..."
+pip install -r requirements.txt
+
+# 5. Install local packages from libs/
+echo "Installing local packages..."
+pip install -e ./libs/AudioLDM/AudioLDM/Model/AudioLdm
+pip install -e ./libs/AudioLDM
+pip install -e ./libs/TorchJaekwon
+pip install -e ./libs/taming-transformers
+
+echo "Setup Complete! Run 'conda activate foley' to get started."
+
+echo "Downloading model checkpoints..."
+mkdir -p ./ckpt
+HF_BASE="https://huggingface.co/jnwnlee/video-foley/resolve/main"
+for FILE in checkpoint_000500_Video2RMS.pt ControlNetstep300000.pth opts.yml; do
+    if [ ! -f "./ckpt/$FILE" ]; then
+        echo "  Downloading $FILE..."
+        curl -L --retry 3 "$HF_BASE/$FILE" -o "./ckpt/$FILE"
+    else
+        echo "  $FILE already exists, skipping."
+    fi
+done
