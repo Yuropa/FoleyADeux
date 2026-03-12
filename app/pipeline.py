@@ -205,6 +205,104 @@ def _run_audio_generation(
     return rms_curves, waveforms, audio_paths
 
 
+# ── Shared core (no Gradio dependency) ─────────────────────────────────────
+
+def generate(
+    video_path: str,
+    prompt: str,
+    theme: str = "None",
+    output_dir: Optional[str] = None,
+    log=print,
+) -> str:
+    """
+    Run the full foley pipeline and return the path to the merged output video.
+
+    This function has no Gradio dependency and can be called from the CLI,
+    notebooks, or any other Python code.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    prompt : str
+        Free-text sound description.
+    theme : str
+        One of the keys in THEMES (default "None").
+    output_dir : str, optional
+        Where to write outputs.  Defaults to OUTPUT_BASE/<run_id>/.
+    log : callable
+        Function used for status messages (default: print).
+
+    Returns
+    -------
+    str  — absolute path to the merged result video.
+    """
+    config, device = _get_config_and_device()
+
+    theme_prefix = THEMES.get(theme, "")
+    full_prompt  = (theme_prefix + prompt.strip()).strip(", ").strip()
+
+    run_id    = f"run_{os.getpid()}_{id(video_path)}"
+    work_dir  = output_dir or os.path.join(OUTPUT_BASE, run_id)
+    input_dir = os.path.join(work_dir, "input")
+    out_dir   = os.path.join(work_dir, "output")
+    os.makedirs(input_dir, exist_ok=True)
+    os.makedirs(out_dir,   exist_ok=True)
+
+    ext = os.path.splitext(video_path)[1] or ".mp4"
+    shutil.copy(video_path, os.path.join(input_dir, f"input{ext}"))
+
+    log("Preprocessing video (optical flow, features)\u2026")
+    processed_paths = preprocess_videos(
+        video_dir=input_dir,
+        config=config,
+        output_dir=out_dir,
+        device=device,
+        num_workers=1,
+        batch_size=1,
+    )
+
+    log(f'Generating foley audio \u2014 "{full_prompt}"\u2026')
+    _, _, _ = _run_audio_generation(
+        processed_video_paths=processed_paths,
+        config=config,
+        output_dir=out_dir,
+        device=device,
+        text_prompt=full_prompt,
+    )
+
+    output_videos = sorted(glob(os.path.join(out_dir, "video", "*.mp4")))
+    if not output_videos:
+        raise RuntimeError(
+            "Audio was generated but no output video was produced. "
+            "Check that FFmpeg is installed and the source clip exists."
+        )
+
+    result_path = os.path.join(work_dir, "result.mp4")
+    if len(output_videos) == 1:
+        shutil.copy(output_videos[0], result_path)
+    else:
+        concat_list = os.path.join(work_dir, "concat.txt")
+        with open(concat_list, "w") as fh:
+            for vp in output_videos:
+                fh.write(f"file '{vp}'\n")
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", concat_list,
+                "-c", "copy",
+                result_path,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    log(f"Done \u2014 result saved to {result_path}")
+    return result_path
+
+
 # ── Gradio-facing handler ────────────────────────────────────────────────────
 
 def run_inference(
@@ -235,11 +333,8 @@ def run_inference(
         raise gr.Error("Please enter a sound prompt.")
 
     config, device = _get_config_and_device()
+    full_prompt = (THEMES.get(theme, "") + prompt.strip()).strip(", ").strip()
 
-    theme_prefix = THEMES.get(theme, "")
-    full_prompt  = (theme_prefix + prompt.strip()).strip(", ").strip()
-
-    # Isolated directory per run to avoid collisions between concurrent users
     run_id    = f"run_{os.getpid()}_{id(video_path)}"
     work_dir  = os.path.join(OUTPUT_BASE, run_id)
     input_dir = os.path.join(work_dir, "input")
@@ -283,7 +378,7 @@ def run_inference(
         spectrogram_fig = plot_spectrogram(full_waveform, sr)
         rms_fig         = plot_rms_envelope(full_waveform, full_rms, sr)
 
-        # Locate all muxed output clips (one per 10-s segment)
+        # Merge output segments
         output_videos = sorted(glob(os.path.join(out_dir, "video", "*.mp4")))
         if not output_videos:
             raise gr.Error(
@@ -295,19 +390,13 @@ def run_inference(
         if len(output_videos) == 1:
             shutil.copy(output_videos[0], result_path)
         else:
-            # Write an FFmpeg concat list and merge all segments into one video
             concat_list = os.path.join(work_dir, "concat.txt")
             with open(concat_list, "w") as fh:
                 for vp in output_videos:
                     fh.write(f"file '{vp}'\n")
             subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "concat", "-safe", "0",
-                    "-i", concat_list,
-                    "-c", "copy",
-                    result_path,
-                ],
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", concat_list, "-c", "copy", result_path],
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

@@ -8,10 +8,11 @@ Video-to-foley pipeline that generates any desired sound synchronised to on-scre
 
 ## How it works
 
-1. **Video preprocessing** — videos are segmented, optical flow is extracted (RAFT), and BN-Inception RGB/Flow features are computed.
+1. **Video preprocessing** — videos are segmented into 10-second clips; optical flow is extracted with RAFT, and BN-Inception RGB/Flow features are computed per segment.
 2. **Video2RMS** — predicts an RMS envelope (timing + dynamics) from the visual features.
 3. **AudioLDM** — the base AudioLDM + CLAP text embedding generates *any* sound you describe.
 4. **Amplitude modulation** — the Video2RMS envelope is applied to the generated audio so the output's rhythm and intensity follow the on-screen motion.
+5. **Merge** — all output segments are concatenated into a single result video.
 
 ## Setup
 
@@ -22,33 +23,50 @@ bash setup.sh
 conda activate foley
 ```
 
-## Running the UI
+## Usage
+
+### Web UI
 
 ```bash
-python -m app                    # default: http://localhost:7860
+python -m app                    # http://localhost:7860
 python -m app --port 8080
-python -m app --share            # create a public Gradio tunnel URL
+python -m app --share            # public Gradio tunnel URL
 ```
 
-### UI features
-
-- **Upload** any `.mp4` / `.avi` video
+**UI features**
+- **Upload** any `.mp4` / `.avi` video, or pick one from the built-in **example gallery**
 - **Sound prompt** — describe the sound you want in free text
 - **Theme** — prefix your prompt with a style preset (Cinematic, Cartoon, Funny, Horror, Nature, Sci-Fi, Fantasy, Rock, Jazz)
 - **Auto-caption** button *(coming soon)* — a vision-language model will analyse the video and suggest a default prompt
-- **Output video** with generated foley audio muxed in
-- **Audio visualisations** — waveform, mel spectrogram, and a two-panel RMS envelope plot showing the Video2RMS prediction vs. the realised audio RMS
+- **Output video** — all segments merged into one, with generated foley audio muxed in
+- **Audio visualisations** — waveform, mel spectrogram, and RMS envelope plot
+
+### Command line
+
+```bash
+# Minimal
+python infer.py --video examples/hitting_a_plastic_bag.mp4 --prompt "hitting a plastic bag"
+
+# With theme and explicit output directory
+python infer.py \
+  --video  examples/typing.mp4 \
+  --prompt "typing on a keyboard" \
+  --theme  cinematic \
+  --output output/my_run
+```
+
+Available themes: `none`, `cinematic`, `cartoon`, `funny`, `horror`, `nature`, `sci-fi`, `fantasy`, `rock`, `jazz`
 
 ## Output
 
 ```
-gradio_output/
+gradio_output/          (UI)   or the path passed to --output (CLI)
   run_<id>/
-    input/    — copy of the uploaded video
+    input/              — copy of the input video
     output/
-      audio/  — generated .wav files (one per segment)
-      video/  — .mp4 files with generated audio muxed in
-    result.mp4 — final output served to the UI
+      audio/            — generated .wav files (one per 10-s segment)
+      video/            — .mp4 clips with audio muxed in (one per segment)
+    result.mp4          — all segments merged into the final output
 ```
 
 ## Checkpoints
@@ -64,17 +82,19 @@ Downloaded automatically by `setup.sh` into `ckpt/`:
 ## Project structure
 
 ```
+infer.py         — CLI entry point (no Gradio required)
 app/
-  config.py      — paths, theme definitions, colour palette
+  config.py      — paths, theme definitions, colour palette, create_device()
   preprocess.py  — video preprocessing pipeline (RAFT, BN-Inception)
-  pipeline.py    — Video2RMS + AudioLDM inference loop
+  pipeline.py    — shared core: generate() + Gradio run_inference() wrapper
   plots.py       — waveform, spectrogram, RMS envelope figures
   caption.py     — auto-caption stub (future VLM integration)
   ui.py          — Gradio layout and event wiring
   __main__.py    — python -m app entry point
 video2rms/       — Video2RMS model and data utilities
-libs/            — AudioLDM, TorchJaekwon, taming-transformers
+libs/            — AudioLDM, TorchJaekwon
 ckpt/            — model checkpoints and inference config (gitignored)
+examples/        — sample videos for the UI gallery
 ```
 
 

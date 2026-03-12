@@ -43,6 +43,20 @@ THEMES = {
     "🎺 Jazz":       "jazz piano trumpet upright bass swing, ",
 }
 
+# Plain-text aliases used by the CLI so the user never has to type emojis.
+THEMES_CLI = {
+    "none":      "None",
+    "cinematic": "🎬 Cinematic",
+    "cartoon":   "🎨 Cartoon",
+    "funny":     "😂 Funny",
+    "horror":    "👻 Horror",
+    "nature":    "🌿 Nature",
+    "sci-fi":    "🚀 Sci-Fi",
+    "fantasy":   "✨ Fantasy",
+    "rock":      "🎸 Rock",
+    "jazz":      "🎺 Jazz",
+}
+
 THEME_DESCRIPTIONS = {
     "None":          "No theme — use your prompt exactly as typed.",
     "🎬 Cinematic":  "Dramatic, orchestral sounds suited for film scoring.",
