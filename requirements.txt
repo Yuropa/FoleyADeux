@@ -1,9 +1,8 @@
 accelerate>=0.26.0
 av==16.1.0
-braceexpand==0.1.7
+diffusers>=0.25.0,<0.32.0
 gradio>=4.0,<6.0
 ffmpeg-python==0.2.0
-git-lfs==1.6
 librosa==0.10.1
 lightning==2.6.1
 matplotlib==3.10.8
@@ -15,15 +14,12 @@ pillow==10.4.0
 python-dotenv==1.2.2
 scikit-learn==1.7.2
 scipy==1.15.3
+soundfile
 timm==1.0.25
 tokenizers==0.21.0
 torcheval==0.0.7
-torchlibrosa==0.1.0
 tqdm==4.67.3
 transformers==4.51.0
-wandb==0.25.0
-wget==3.2
 yacs==0.1.8
 qwen-vl-utils
 num2words
-git+https://github.com/CompVis/taming-transformers

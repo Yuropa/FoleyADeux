@@ -24,7 +24,7 @@ _model     = None
 _processor = None
 _device    = None
 
-_MODEL_ID = "HuggingFaceTB/SmolVLM2-2.2B-Instruct"
+_MODEL_ID = "HuggingFaceTB/SmolVLM2-500M-Instruct"
 
 
 def _load_model():

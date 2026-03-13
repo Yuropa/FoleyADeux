@@ -7,14 +7,13 @@ import yaml
 import numpy as np
 import torch
 import torch.nn as nn
-import librosa
 import soundfile as sf
 import moviepy as mp
 import moviepy.editor as mpe
+from diffusers import AudioLDM2Pipeline
 
 from config import _C as config
 from model import Video2Sound
-from AudioLDM.AudioLDMControlNet import AudioLDMControlNet
 
 
 def load_config(config_path: str) -> CN:
@@ -46,39 +45,9 @@ def save_video_with_audio(video_path:str, audio: np.ndarray, output_path:str, sr
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     video.write_videofile(output_path, codec='libx264', audio_codec='aac')
     
-def interpolate_rms_for_rms2sound(rms:torch.tensor, audio_len:int=10, sr:int=16000,
-                                  audioldm_samples:int=int(16000*10.24),
-                               frame_len:int=1024, hop_len:int=160) -> torch.tensor:
-    # get target length by calculating length with one values
-    _dummy_audio = np.pad(np.zeros(audio_len*sr),
-                    (int((frame_len - hop_len) / 2), int((frame_len - hop_len) / 2), ), 
-                    mode="reflect")
-    target_rms_len = int(librosa.feature.rms(y=_dummy_audio, \
-                                            frame_length=frame_len, hop_length=hop_len, \
-                                            center=False, pad_mode="reflect").shape[1])
-    # interpolate rms to target_rms_shape (rms.shape: (frames))
-    interpolated_rms = torch.nn.functional.interpolate(rms.unsqueeze(0).unsqueeze(0),
-                                                         size=(1, target_rms_len), 
-                                                         mode='nearest')
-    interpolated_rms = interpolated_rms.squeeze(0).squeeze(0)
-    
-    # get rms length for AudioLDM
-    _dummy_audio_audioldm = np.pad(np.zeros(audioldm_samples),
-                    (int((frame_len - hop_len) / 2), int((frame_len - hop_len) / 2), ), 
-                    mode="reflect")
-    rms_len_audioldm = int(librosa.feature.rms(y=_dummy_audio_audioldm, \
-                                            frame_length=frame_len, hop_length=hop_len, \
-                                            center=False, pad_mode="reflect").shape[1])
-    
-    # pad zeros at right
-    interpolated_rms = torch.nn.functional.pad(interpolated_rms, (0, rms_len_audioldm - target_rms_len))
-    
-    return interpolated_rms
-
-
-def load_models(epoch: int, video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, config: CN, 
-                device: torch.device, torch_dtype: any) -> Tuple[nn.Module, AudioLDMControlNet]:
-    '''Returns Video2RMS model and AudioLDMControlNet model with loaded checkpoint'''
+def load_models(epoch: int, video2rms_ckpt_dir: str, config: CN,
+                device: torch.device, torch_dtype: any) -> Tuple[nn.Module, AudioLDM2Pipeline]:
+    '''Returns Video2RMS model and AudioLDM2Pipeline'''
     # Check for checkpoint file
     if epoch > -1:
         checkpoint_path = os.path.join(video2rms_ckpt_dir, f'checkpoint_{epoch:06d}_Video2RMS.pt')
@@ -93,18 +62,14 @@ def load_models(epoch: int, video2rms_ckpt_dir: str, rms2sound_ckpt_dir: str, co
             print(f"Using checkpoint from epoch {epoch}")
         else:
             raise FileNotFoundError("No checkpoint files found in the specified directory.")
-    
-    if not glob(os.path.join(rms2sound_ckpt_dir, 'ControlNetstep*.pth')):
-        raise FileNotFoundError(f"No ControlNetstep*.pth file found in {rms2sound_ckpt_dir}")
-    
+
     # Load Video2RMS model
     video2rms_model = load_model(epoch, video2rms_ckpt_dir, config, device, torch_dtype).to(device)
 
-    # Load AudioLDMControlNet model
-    audio_ldm_controlnet = AudioLDMControlNet(
-        control_net_pretrained_path = os.path.join(rms2sound_ckpt_dir, 'ControlNetstep300000.pth'),
-        device = device,
-        torch_dtype = torch_dtype
-    )
+    # Load AudioLDM 2 pipeline from HuggingFace
+    audio_ldm2 = AudioLDM2Pipeline.from_pretrained(
+        "cvssp/audioldm2",
+        torch_dtype=torch_dtype,
+    ).to(device)
 
-    return video2rms_model, audio_ldm_controlnet
+    return video2rms_model, audio_ldm2

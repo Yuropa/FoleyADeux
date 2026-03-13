@@ -7,7 +7,7 @@ Public surface
 --------------
 run_inference(video_path, prompt, theme, progress)
     End-to-end handler called by the Generate button.  Runs video
-    preprocessing, AudioLDM generation, and plot building.  Returns
+    preprocessing, AudioLDM 2 generation, and plot building.  Returns
     (output_video_path, waveform_fig, spectrogram_fig, rms_fig, status_md).
 
 Internal helpers
@@ -16,7 +16,7 @@ _get_config_and_device()
     Lazy-initialise the YACS config and torch device singletons.
 
 _run_audio_generation(...)
-    Loop over preprocessed clips: Video2RMS forward → AudioLDM generate
+    Loop over preprocessed clips: Video2RMS forward → AudioLDM 2 generate
     → amplitude modulation → save audio + muxed video.
     Returns RMS curves and waveforms for downstream visualisation.
 """
@@ -42,7 +42,7 @@ from .config import CKPT_DIR, OUTPUT_BASE, THEMES, create_device
 from .plots import plot_waveform, plot_spectrogram, plot_rms_envelope
 from .preprocess import preprocess_videos
 # These are repo-local modules; sys.path is set up by .config at import time.
-from util import load_config, load_models, save_video_with_audio, interpolate_rms_for_rms2sound  # noqa: E402
+from util import load_config, load_models, save_video_with_audio  # noqa: E402
 from data_utils import RMS, pad_or_truncate_feature  # noqa: E402
 # Loaded once on first Generate click, then reused for every subsequent run.
 _config: Optional[CN] = None
@@ -120,12 +120,11 @@ def _run_audio_generation(
     epoch: int = 500,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[str]]:
     """
-    Run Video2RMS + AudioLDM generation for each preprocessed clip.
+    Run Video2RMS + AudioLDM 2 generation for each preprocessed clip.
 
-    The ControlNet branch is bypassed so the generation is driven purely by
-    the CLAP text embedding of the user's prompt.  The Video2RMS predicted
-    RMS envelope is then applied as amplitude modulation so the output sound
-    follows the video's rhythm and intensity.
+    Audio is generated from the user's text prompt via AudioLDM 2.  The
+    Video2RMS predicted RMS envelope is then applied as amplitude modulation
+    so the output sound follows the video's rhythm and intensity.
 
     Parameters
     ----------
@@ -157,20 +156,13 @@ def _run_audio_generation(
     rgb_dir     = os.path.join(feature_dir, "feature_RGB")
     flow_dir    = os.path.join(feature_dir, "feature_Flow")
 
-    video2rms_model, audio_ldm_controlnet = load_models(
-        epoch, CKPT_DIR, CKPT_DIR, config, device, torch_dtype
+    video2rms_model, audio_ldm2 = load_models(
+        epoch, CKPT_DIR, config, device, torch_dtype
     )
     video2rms_model.eval()
 
     mu_bins = RMS.get_mu_bins(
         config.data.rms_mu, config.data.rms_num_bins, config.data.rms_min
-    )
-
-    # Bypass ControlNet: patch apply_model so the RMS branch has zero influence
-    _orig_apply = audio_ldm_controlnet.model.apply_model
-    audio_ldm_controlnet.model.apply_model = (
-        lambda x, t, cond, **kw:
-            _orig_apply(x, t, cond, w_control_net_condition=False, **kw)
     )
 
     rms_curves:  List[np.ndarray] = []
@@ -203,21 +195,14 @@ def _run_audio_generation(
             pred_bin_tensor   = torch.from_numpy(pred_rms_raw.argmax(axis=0))
             rms_undiscretized = RMS.undiscretize_rms(pred_bin_tensor, mu_bins, ignore_min=True)
 
-            # Interpolate RMS to the latent frame rate expected by AudioLDM
-            rms_for_ldm = interpolate_rms_for_rms2sound(
-                rms_undiscretized.unsqueeze(0),
-                audio_len=config.data.audio_samples,
-                sr=config.data.audio_sample_rate,
-                frame_len=1024,
-                hop_len=160,
-            ).to(device)
-
-            # AudioLDM generation (ControlNet bypassed, CLAP text conditioning)
-            generated_raw = audio_ldm_controlnet.generate(
-                waveform=None,
-                text_prompt=text_prompt,
-                rms=rms_for_ldm,
-            )
+            # AudioLDM 2 generation via text prompt
+            generated_raw = audio_ldm2(
+                prompt=text_prompt,
+                negative_prompt="Low quality, average.",
+                num_inference_steps=200,
+                audio_length_in_s=float(config.data.audio_samples),
+                guidance_scale=7.0,
+            ).audios[0]
 
             # Apply Video2RMS amplitude envelope as modulation
             rms_np   = rms_undiscretized.numpy()
@@ -266,9 +251,8 @@ def _run_audio_generation(
             audio_paths.append(audio_path)
 
     finally:
-        # Always restore original method and free GPU memory
-        audio_ldm_controlnet.model.apply_model = _orig_apply
-        del video2rms_model, audio_ldm_controlnet
+        # Free GPU memory
+        del video2rms_model, audio_ldm2
         torch.cuda.empty_cache()
 
     return rms_curves, waveforms, audio_paths

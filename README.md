@@ -10,7 +10,7 @@ Video-to-foley pipeline that generates any desired sound synchronised to on-scre
 
 1. **Video preprocessing** — videos are segmented into 10-second clips; optical flow is extracted with RAFT, and BN-Inception RGB/Flow features are computed per segment.
 2. **Video2RMS** — predicts an RMS envelope (timing + dynamics) from the visual features.
-3. **AudioLDM** — the base AudioLDM + CLAP text embedding generates *any* sound you describe.
+3. **AudioLDM2** — the base AudioLDM2 + CLAP text embedding generates *any* sound you describe.
 4. **Amplitude modulation** — the Video2RMS envelope is applied to the generated audio so the output's rhythm and intensity follow the on-screen motion.
 5. **Merge** — all output segments are concatenated into a single result video.
 
@@ -37,7 +37,7 @@ python -m app --share            # public Gradio tunnel URL
 - **Upload** any `.mp4` / `.avi` video, or pick one from the built-in **example gallery**
 - **Sound prompt** — describe the sound you want in free text
 - **Theme** — prefix your prompt with a style preset (Cinematic, Cartoon, Funny, Horror, Nature, Sci-Fi, Fantasy, Rock, Jazz)
-- **Auto-caption** button — powered by **SmolVLM2-2.2B-Instruct**; analyses the video and suggests a sound prompt automatically (first run downloads the model ~4 GB)
+- **Auto-caption** button — powered by **SmolVLM2-500M-Instruct**; analyses the video and suggests a sound prompt automatically (first run downloads the model ~4 GB)
 - **Output video** — all segments merged into one, with generated foley audio muxed in
 - **Audio visualisations** — waveform, mel spectrogram, and RMS envelope plot
 
@@ -90,7 +90,6 @@ Downloaded automatically by `setup.sh` into `ckpt/`:
 | File | Description |
 |------|-------------|
 | `checkpoint_000500_Video2RMS.pt` | Video2RMS model (epoch 500) |
-| `ControlNetstep300000.pth` | AudioLDM ControlNet weights |
 | `opts.yml` | Inference configuration (written by setup.sh) |
 
 ## Project structure

@@ -5,7 +5,7 @@ Shared constants: paths, sys.path bootstrap, theme definitions,
 and the matplotlib colour palette used across plot modules.
 
 Importing this module (or any module that imports it) is all that is
-needed to make the repo-local libraries (video2rms, AudioLDM, …)
+needed to make the repo-local libraries (video2rms, …)
 importable from anywhere in the package.
 """
 
@@ -22,8 +22,6 @@ EXAMPLES_DIR = os.path.join(ROOT_DIR, "examples")
 for _p in [
     ROOT_DIR,                                             # utils/
     os.path.join(ROOT_DIR, "video2rms"),                  # util.py, data_utils.py …
-    os.path.join(ROOT_DIR, "libs", "AudioLDM"),
-    os.path.join(ROOT_DIR, "libs", "taming-transformers"),
 ]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
