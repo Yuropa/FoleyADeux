@@ -26,6 +26,9 @@ import shutil
 import subprocess
 from glob import glob
 from typing import List, Optional, Tuple
+from scipy.ndimage import gaussian_filter1d
+from scipy.signal import find_peaks
+from scipy.interpolate import interp1d
 
 import numpy as np
 import torch
@@ -62,6 +65,50 @@ def _get_config() -> Tuple[CN, str]:
 
 
 # ── Audio generation loop ────────────────────────────────────────────────────
+
+def _align_audio_to_rms(generated_raw, rms_np, sr, hop_len=160):
+    """
+    Warp generated_raw so its peaks align with peaks in rms_np.
+    """
+    n_audio = len(generated_raw)
+    
+    # --- Find peaks in RMS (video hits) ---
+    rms_resampled = np.interp(
+        np.linspace(0, 1, n_audio),
+        np.linspace(0, 1, len(rms_np)),
+        rms_np,
+    )
+    rms_peaks, _ = find_peaks(rms_resampled, height=rms_resampled.mean(), distance=sr//4)
+
+    # --- Find peaks in generated audio (loudness envelope) ---
+    audio_env = np.abs(generated_raw)
+    # smooth the audio envelope so we get broad peaks, not individual samples
+    audio_env = gaussian_filter1d(audio_env, sigma=sr//20)
+    audio_peaks, _ = find_peaks(audio_env, height=audio_env.mean(), distance=sr//4)
+
+    if len(rms_peaks) == 0 or len(audio_peaks) == 0:
+        return generated_raw  # can't align, return as-is
+
+    # --- Match audio peaks to nearest RMS peaks ---
+    # Use as many pairs as we have (trim to shorter list)
+    n_pairs = min(len(rms_peaks), len(audio_peaks))
+    src = audio_peaks[:n_pairs].astype(float)
+    dst = rms_peaks[:n_pairs].astype(float)
+
+    # Always anchor start and end so the warp covers the full signal
+    src = np.concatenate([[0], src, [n_audio - 1]])
+    dst = np.concatenate([[0], dst, [n_audio - 1]])
+
+    # --- Build a time-warp map ---
+    # For each output sample position, find where to sample in the input
+    warp = interp1d(dst, src, kind='linear', bounds_error=False,
+                    fill_value=(src[0], src[-1]))
+    output_positions = np.arange(n_audio)
+    input_positions  = warp(output_positions)
+
+    # --- Resample audio along the warp map ---
+    aligned = np.interp(input_positions, np.arange(n_audio), generated_raw)
+    return aligned
 
 def _run_audio_generation(
     processed_video_paths: List[str],
@@ -174,19 +221,31 @@ def _run_audio_generation(
 
             # Apply Video2RMS amplitude envelope as modulation
             rms_np   = rms_undiscretized.numpy()
+            generated_raw = _align_audio_to_rms(generated_raw, rms_np, config.data.audio_sample_rate)
+
+            # Trim the audio
+            expected_len = config.data.audio_sample_rate * config.data.audio_samples
+            generated_raw = generated_raw[:expected_len]
+            if len(generated_raw) < expected_len:
+                generated_raw = np.pad(generated_raw, (0, expected_len - len(generated_raw)))
+
             envelope = np.interp(
                 np.linspace(0, 1, len(generated_raw)),
                 np.linspace(0, 1, len(rms_np)),
                 rms_np,
             )
 
-            # Apply exponential decay so peaks become impulses that tail off
-            envelope_decay = config.data.envelope_decay # controls decay speed (closer to 1 = slower decay)
-            shaped = np.zeros_like(envelope)
-            shaped[0] = envelope[0]
-            for i in range(1, len(envelope)):
-                shaped[i] = max(envelope[i], shaped[i-1] * envelope_decay)
+            # Asymmetric smoothing: fast attack, slow decay
+            attack_sigma = config.data.envelope_attack_sigma
+            decay_sigma  = config.data.envelope_decay_sigma
 
+            # Smooth rising and falling edges separately
+            rising  = gaussian_filter1d(np.maximum(np.diff(envelope, prepend=envelope[0]), 0), sigma=attack_sigma)
+            falling = gaussian_filter1d(np.minimum(np.diff(envelope, prepend=envelope[0]), 0), sigma=decay_sigma)
+
+            # Reconstruct envelope from asymmetrically smoothed deltas
+            shaped = np.cumsum(rising + falling)
+            shaped -= shaped.min()  # ensure non-negative
             shaped /= (shaped.max() + 1e-8)
             generated = generated_raw * shaped
 
