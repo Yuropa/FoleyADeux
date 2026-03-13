@@ -90,7 +90,7 @@ def create_device() -> tuple:
     import torch
     if torch.cuda.is_available():
         device = "cuda"
-        torch_dtype = torch.float16
+        torch_dtype = torch.float32
     elif torch.backends.mps.is_available():
         device = "mps"
         torch_dtype = torch.float32
