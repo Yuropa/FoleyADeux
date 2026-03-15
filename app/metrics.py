@@ -229,7 +229,11 @@ def aggregate_metrics(metrics_list: List[Dict[str, float]]) -> Dict[str, float]:
     if not metrics_list:
         return {}
     keys = metrics_list[0].keys()
-    return {k: float(np.mean([m[k] for m in metrics_list if k in m])) for k in keys}
+    result = {}
+    for k in keys:
+        values = [m[k] for m in metrics_list if k in m and m[k] is not None]
+        result[k] = float(np.mean(values)) if values else None
+    return result
 
 
 def format_metrics_markdown(
