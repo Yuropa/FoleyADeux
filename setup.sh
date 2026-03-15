@@ -24,8 +24,6 @@ pip install -r requirements.txt
 
 # 5. Install local packages from libs/
 echo "Installing local packages..."
-pip install -e ./libs/AudioLDM/AudioLDM/Model/AudioLdm
-pip install -e ./libs/AudioLDM
 pip install -e ./libs/TorchJaekwon
 
 git clone https://github.com/CompVis/taming-transformers.git ./libs/taming-transformers
@@ -35,7 +33,7 @@ pip install -e ./libs/taming-transformers
 echo "Downloading model checkpoints..."
 mkdir -p ./ckpt
 HF_BASE="https://huggingface.co/jnwnlee/video-foley/resolve/main"
-for FILE in checkpoint_000500_Video2RMS.pt ControlNetstep300000.pth; do
+for FILE in checkpoint_000500_Video2RMS.pt; do
     if [ ! -f "./ckpt/$FILE" ]; then
         echo "  Downloading $FILE..."
         curl -L --retry 3 "$HF_BASE/$FILE" -o "./ckpt/$FILE"
