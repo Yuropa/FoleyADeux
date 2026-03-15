@@ -255,10 +255,21 @@ def build_ui() -> gr.Blocks:
                     with gr.Tab("📈 RMS Envelope"):
                         gr.Markdown(
                             "_Orange: Video2RMS prediction (motion timing from the video). "
-                            "Green: realised audio RMS after amplitude modulation._",
+                            "Green: realised audio RMS after amplitude modulation. "
+                            "The annotation box shows Pearson r and MAE._",
                             elem_id="theme-info",
                         )
                         rms_plot = gr.Plot(show_label=False)
+
+                    with gr.Tab("📊 Metrics"):
+                        gr.Markdown(
+                            "_Synchronisation, audio quality, and prompt-adherence "
+                            "scores computed after each generation._",
+                            elem_id="theme-info",
+                        )
+                        metrics_output = gr.Markdown(
+                            "_Run generation to see metrics._"
+                        )
 
         # ── How it works accordion ─────────────────────────────────────────
         with gr.Accordion("ℹ️  How it works", open=False):
@@ -298,7 +309,7 @@ generating.
         generate_btn.click(
             fn=run_inference,
             inputs=[video_input, prompt_input, theme_dropdown],
-            outputs=[video_output, waveform_plot, spectrogram_plot, rms_plot, status_box],
+            outputs=[video_output, waveform_plot, spectrogram_plot, rms_plot, status_box, metrics_output],
         )
 
     return demo

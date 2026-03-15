@@ -7,8 +7,10 @@ Public surface
 --------------
 run_inference(video_path, prompt, theme, progress)
     End-to-end handler called by the Generate button.  Runs video
-    preprocessing, AudioLDM 2 generation, and plot building.  Returns
-    (output_video_path, waveform_fig, spectrogram_fig, rms_fig, status_md).
+    preprocessing, AudioLDM 2 generation, metrics computation, and plot
+    building.  Yields 6-tuples:
+        (output_video_path, waveform_fig, spectrogram_fig, rms_fig,
+         status_md, metrics_md)
 
 Internal helpers
 ----------------
@@ -41,6 +43,13 @@ from yacs.config import CfgNode as CN
 from .config import CKPT_DIR, OUTPUT_BASE, THEMES, create_device
 from .plots import plot_waveform, plot_spectrogram, plot_rms_envelope
 from .preprocess import preprocess_videos
+from .metrics import (
+    compute_envelope_metrics,
+    compute_audio_quality_metrics,
+    compute_clap_score,
+    aggregate_metrics,
+    format_metrics_markdown,
+)
 # These are repo-local modules; sys.path is set up by .config at import time.
 from util import load_config, load_models, save_video_with_audio  # noqa: E402
 from data_utils import RMS, pad_or_truncate_feature  # noqa: E402
@@ -317,13 +326,35 @@ def generate(
     )
 
     log(f'Generating foley audio \u2014 "{full_prompt}"\u2026')
-    _, _, _ = _run_audio_generation(
+    rms_curves, waveforms, _ = _run_audio_generation(
         processed_video_paths=processed_paths,
         config=config,
         output_dir=out_dir,
         device=device,
         torch_dtype=torch_dtype,
         text_prompt=full_prompt,
+    )
+
+    # Compute and log metrics
+    log("Computing metrics\u2026")
+    sr = config.data.audio_sample_rate
+    full_waveform = np.concatenate(waveforms) if waveforms else np.zeros(256)
+    per_seg_metrics = []
+    for rms_curve, wav in zip(rms_curves, waveforms):
+        seg_m = {}
+        seg_m.update(compute_envelope_metrics(rms_curve, wav, sr))
+        seg_m.update(compute_audio_quality_metrics(wav, sr))
+        per_seg_metrics.append(seg_m)
+    clap = compute_clap_score(full_prompt, full_waveform, sr)
+    for seg_m in per_seg_metrics:
+        seg_m["clap_score"] = clap
+    summary = aggregate_metrics(per_seg_metrics)
+    log(
+        f"  Envelope r={summary.get('envelope_pearson_r', 0):.3f}  "
+        f"MAE={summary.get('envelope_mae', 0):.4f}  "
+        f"Onset F1={summary.get('onset_f1', 0):.3f}  "
+        f"DR={summary.get('dynamic_range_db', 0):.1f}dB"
+        + (f"  CLAP={clap:.4f}" if clap is not None else "")
     )
 
     output_videos = sorted(glob(os.path.join(out_dir, "video", "*.mp4")))
@@ -379,8 +410,9 @@ def run_inference(
         spectrogram_fig   : matplotlib.figure.Figure | None
         rms_fig           : matplotlib.figure.Figure | None
         status_markdown   : str
+        metrics_markdown  : str
     """
-    _idle = (None, None, None, None)  # placeholder for unready outputs
+    _idle = (None, None, None, None, "")  # placeholder for unready outputs
 
     if video_path is None:
         raise gr.Error("Please upload a video first.")
@@ -435,6 +467,25 @@ def run_inference(
         spectrogram_fig = plot_spectrogram(full_waveform, sr)
         rms_fig         = plot_rms_envelope(full_waveform, full_rms, sr)
 
+        # Stage 4: compute metrics (AudioLDM 2 is already freed at this point)
+        yield *_idle, "\u23f3 Computing metrics\u2026"
+        per_seg_metrics = []
+        for rms_curve, wav in zip(rms_curves, waveforms):
+            seg_m = {}
+            seg_m.update(compute_envelope_metrics(rms_curve, wav, sr))
+            seg_m.update(compute_audio_quality_metrics(wav, sr))
+            per_seg_metrics.append(seg_m)
+
+        # CLAP score on the full waveform — the prompt applies to the whole piece
+        clap = compute_clap_score(full_prompt, full_waveform, sr)
+        for seg_m in per_seg_metrics:
+            seg_m["clap_score"] = clap
+
+        metrics_md = format_metrics_markdown(
+            aggregate_metrics(per_seg_metrics),
+            n_segments=len(per_seg_metrics),
+        )
+
         # Merge output segments
         output_videos = sorted(glob(os.path.join(out_dir, "video", "*.mp4")))
         if not output_videos:
@@ -464,7 +515,7 @@ def run_inference(
             f"Prompt: **{full_prompt}** &nbsp;|&nbsp; "
             f"Duration: {len(full_waveform) / sr:.1f}s"
         )
-        yield result_path, waveform_fig, spectrogram_fig, rms_fig, status
+        yield result_path, waveform_fig, spectrogram_fig, rms_fig, status, metrics_md
 
     except gr.Error:
         raise

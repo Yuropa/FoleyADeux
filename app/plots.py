@@ -20,6 +20,7 @@ import librosa.display
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from scipy.stats import pearsonr
 
 from .config import BG, PANEL, BORDER, TEXT, HEADING, MUTED, BLUE, GREEN, ORANGE
 
@@ -141,6 +142,26 @@ def plot_rms_envelope(
     ax2.set_xlim(0, max(duration, 1e-3))
     ax2.legend(fontsize=8, facecolor=BORDER, labelcolor=TEXT, edgecolor=BORDER)
     _style_axes(ax2, "Predicted vs Actual RMS Envelope")
+
+    # Annotate with Pearson r and MAE (align lengths before computing)
+    pred_aligned = np.interp(
+        np.linspace(0, 1, len(actual_norm)),
+        np.linspace(0, 1, len(pred_norm)),
+        pred_norm,
+    )
+    r, _ = pearsonr(pred_aligned, actual_norm)
+    mae  = float(np.mean(np.abs(pred_aligned - actual_norm)))
+    badge = "●" if r >= 0.70 else ("◑" if r >= 0.40 else "○")
+    ax2.text(
+        0.99, 0.97,
+        f"r = {r:+.3f}   MAE = {mae:.4f}   {badge}",
+        transform=ax2.transAxes,
+        ha="right", va="top", fontsize=8.5, color=TEXT,
+        bbox=dict(
+            boxstyle="round,pad=0.3",
+            facecolor=BORDER, edgecolor=BORDER, alpha=0.85,
+        ),
+    )
 
     fig.tight_layout(pad=1.6)
     return fig
