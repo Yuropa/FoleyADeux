@@ -209,16 +209,23 @@ def compute_clap_score(
             text_emb = _clap_model.get_text_features(**text_in)
 
             # Pass waveform as float32; ClapFeatureExtractor resamples to 48 kHz
+            TARGET_SR = 48_000
+            if sr != TARGET_SR:
+                waveform_clap = librosa.resample(waveform.astype(np.float32), orig_sr=sr, target_sr=TARGET_SR)
+            else:
+                waveform_clap = waveform.astype(np.float32)
+
             audio_in  = _clap_processor(
-                audios=[waveform.astype(np.float32)],
-                sampling_rate=sr,
+                audios=[waveform_clap],
+                sampling_rate=TARGET_SR,
                 return_tensors="pt",
             )
             audio_emb = _clap_model.get_audio_features(**audio_in)
 
             return float(F.cosine_similarity(text_emb, audio_emb).item())
 
-    except Exception:  # noqa: BLE001
+    except Exception as e: 
+        print(e)
         return None
 
 
