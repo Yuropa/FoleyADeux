@@ -158,12 +158,12 @@ label, .gr-label, .label-wrap span {
 def build_ui() -> gr.Blocks:
     """Construct and return the fully wired Gradio Blocks application."""
 
-    with gr.Blocks(css=CSS, theme=gr.themes.Base(), title="FoleyADeux") as demo:
+    with gr.Blocks(css=CSS, theme=gr.themes.Base(), title="Foley à Deux") as demo:
 
         # ── Header ────────────────────────────────────────────────────────
         gr.HTML("""
         <div id="foley-header">
-          <h1>🎬 FoleyADeux</h1>
+          <h1>🎬 Foley à Deux</h1>
           <p>AI-powered foley sound generation — synchronised to on-screen motion.</p>
         </div>
         """)
